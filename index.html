@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ドラフト会議風 名前発表ツール</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <section class="draft-board" aria-labelledby="pageTitle">
+      <p class="event-label">2026 DRAFT MEETING</p>
+      <h1 id="pageTitle">名前発表ツール</h1>
+
+      <div class="draft-layout">
+        <div class="draft-main-panel">
+          <div class="team-area">
+            <label for="teamNameInput">チーム名</label>
+            <div class="input-row">
+              <input type="text" id="teamNameInput" placeholder="例：広島東洋">
+              <button id="setTeamButton" type="button">チーム名を設定</button>
+            </div>
+            <p id="currentTeamLabel" class="current-team">現在のチーム：未設定</p>
+          </div>
+
+          <div class="input-area">
+            <label for="playerName">指名したい名前</label>
+            <div class="input-row">
+              <input type="text" id="playerName" placeholder="例：山田 太郎">
+              <button id="announceButton" type="button">指名する</button>
+            </div>
+            <p id="message" class="message" aria-live="polite"></p>
+          </div>
+
+          <div id="announcement" class="announcement">
+            <p id="roundText" class="round-text">第1巡選択希望選手</p>
+            <p id="announcementTeamName" class="team-text">チーム名を設定してください</p>
+            <p id="announcedName" class="announced-name">ここに名前が表示されます</p>
+          </div>
+        </div>
+
+        <aside class="draft-history-panel">
+          <section class="history-area" aria-labelledby="historyTitle">
+            <div class="history-header">
+              <h2 id="historyTitle">ドラフト履歴</h2>
+              <button id="resetButton" class="reset-button" type="button">履歴をリセット</button>
+            </div>
+            <ol id="draftHistory" class="draft-history"></ol>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
