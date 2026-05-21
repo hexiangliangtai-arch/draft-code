@@ -17,6 +17,7 @@ body {
   box-sizing: border-box;
 }
 
+/* 「2026 DRAFT MEETING」から「ドラフト履歴」までを囲む白いボード */
 .draft-board {
   width: min(920px, 100%);
   padding: 32px;
@@ -27,6 +28,7 @@ body {
   text-align: center;
 }
 
+/* 画面上部の「2026 DRAFT MEETING」 */
 .event-label {
   margin: 0 0 8px;
   color: #174ea6;
@@ -34,28 +36,39 @@ body {
   letter-spacing: 0;
 }
 
+/* 見出しの「名前発表ツール」 */
 h1 {
   margin: 0 0 28px;
   font-size: clamp(32px, 6vw, 56px);
 }
 
+/* 「チーム名」と「指名したい名前」の入力エリア全体 */
+.team-area,
 .input-area {
   max-width: 640px;
-  margin: 0 auto 32px;
+  margin: 0 auto 24px;
   text-align: left;
 }
 
+/* 「指名したい名前」の入力エリア */
+.input-area {
+  margin-bottom: 32px;
+}
+
+/* 「チーム名」「指名したい名前」のラベル文字 */
 label {
   display: block;
   margin-bottom: 8px;
   font-weight: bold;
 }
 
+/* 入力欄とボタンを横に並べる行 */
 .input-row {
   display: flex;
   gap: 12px;
 }
 
+/* 「例：広島東洋」「例：山田 太郎」と表示される入力欄 */
 input {
   flex: 1;
   min-width: 0;
@@ -65,6 +78,7 @@ input {
   font-size: 18px;
 }
 
+/* 「チーム名を設定」「指名する」などのボタン */
 button {
   padding: 14px 22px;
   border: 0;
@@ -76,10 +90,12 @@ button {
   cursor: pointer;
 }
 
+/* ボタンにマウスを乗せたとき */
 button:hover {
   background: #a91f1f;
 }
 
+/* 「名前を入力してください」などのエラーメッセージ */
 .message {
   min-height: 24px;
   margin: 10px 0 0;
@@ -87,6 +103,14 @@ button:hover {
   font-weight: bold;
 }
 
+/* 「現在のチーム：未設定」または設定後のチーム名表示 */
+.current-team {
+  margin: 10px 0 0;
+  color: #174ea6;
+  font-weight: bold;
+}
+
+/* 「第1巡選択希望選手」「チーム名」「ここに名前が表示されます」の発表エリア */
 .announcement {
   padding: 28px 20px;
   border-top: 6px solid #174ea6;
@@ -94,6 +118,7 @@ button:hover {
   background: linear-gradient(180deg, #ffffff, #f3f8ff);
 }
 
+/* 発表エリアの「第1巡選択希望選手」とチーム名 */
 .round-text,
 .team-text {
   margin: 0;
@@ -101,6 +126,7 @@ button:hover {
   font-weight: bold;
 }
 
+/* 発表エリア中央の「ここに名前が表示されます」または指名された名前 */
 .announced-name {
   margin: 18px 0;
   color: #c62828;
@@ -116,11 +142,13 @@ button:hover {
   animation: announce 0.7s ease-out;
 }
 
+/* 「ドラフト履歴」見出しと履歴リストのエリア */
 .history-area {
   margin-top: 28px;
   text-align: left;
 }
 
+/* 「ドラフト履歴」と「履歴をリセット」ボタンを並べる行 */
 .history-header {
   display: flex;
   align-items: center;
@@ -129,22 +157,26 @@ button:hover {
   margin-bottom: 12px;
 }
 
+/* 見出しの「ドラフト履歴」 */
 .history-header h2 {
   margin: 0;
   color: #174ea6;
   font-size: clamp(22px, 4vw, 32px);
 }
 
+/* 「履歴をリセット」ボタン */
 .reset-button {
   padding: 10px 14px;
   background: #174ea6;
   font-size: 15px;
 }
 
+/* 「履歴をリセット」ボタンにマウスを乗せたとき */
 .reset-button:hover {
   background: #0f3f87;
 }
 
+/* 指名後に追加される履歴リスト全体 */
 .draft-history {
   display: grid;
   gap: 10px;
@@ -155,6 +187,7 @@ button:hover {
   overflow-y: auto;
 }
 
+/* 履歴1行分の「第○巡目」「チーム名」「選手名」 */
 .draft-history li {
   display: flex;
   align-items: center;
@@ -168,16 +201,24 @@ button:hover {
   font-weight: bold;
 }
 
+/* 履歴の「第○巡目」 */
 .history-round {
   color: #174ea6;
   white-space: nowrap;
 }
 
+/* 履歴のチーム名 */
+.history-team {
+  color: #1f2933;
+  white-space: nowrap;
+}
+
+/* 履歴の選手名 */
 .history-name {
-  text-align: right;
   overflow-wrap: anywhere;
 }
 
+/* 発表エリアが動くときのアニメーション */
 @keyframes announce {
   0% {
     transform: scale(0.94);

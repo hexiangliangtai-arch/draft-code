@@ -12,6 +12,15 @@
       <p class="event-label">2026 DRAFT MEETING</p>
       <h1 id="pageTitle">名前発表ツール</h1>
 
+      <div class="team-area">
+        <label for="teamNameInput">チーム名</label>
+        <div class="input-row">
+          <input type="text" id="teamNameInput" placeholder="例：広島東洋">
+          <button id="setTeamButton" type="button">チーム名を設定</button>
+        </div>
+        <p id="currentTeamLabel" class="current-team">現在のチーム：未設定</p>
+      </div>
+
       <div class="input-area">
         <label for="playerName">指名したい名前</label>
         <div class="input-row">
@@ -23,8 +32,8 @@
 
       <div id="announcement" class="announcement">
         <p id="roundText" class="round-text">第1巡選択希望選手</p>
+        <p id="announcementTeamName" class="team-text">チーム名を設定してください</p>
         <p id="announcedName" class="announced-name">ここに名前が表示されます</p>
-        <p class="team-text">広島東洋</p>
       </div>
 
       <section class="history-area" aria-labelledby="historyTitle">
