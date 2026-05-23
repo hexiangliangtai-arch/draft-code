@@ -1,4 +1,31 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+import {
+  doc,
+  getDoc,
+  getFirestore,
+  onSnapshot,
+  runTransaction,
+  setDoc,
+} from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+
+// TODO: Firebaseコンソールで取得したWebアプリ用のfirebaseConfigに貼り替えてください。
+const firebaseConfig = {
+  apiKey: "AIza...",
+  authDomain: "draft-code.firebaseapp.com",
+  projectId: "draft-code",
+  storageBucket: "draft-code.firebasestorage.app",
+  messagingSenderId: "611009764252",
+  appId: "1:611009764252:web:..."
+};
+
+const INITIAL_ROUND_TEXT = "第1巡選択希望選手";
+const INITIAL_TEAM_TEXT = "チーム名を設定してください";
+const INITIAL_PLAYER_TEXT = "ここに名前が表示されます";
+
 // HTMLの部品をJavaScriptで使えるように取得します
+const roomIdInput = document.querySelector("#roomIdInput");
+const joinRoomButton = document.querySelector("#joinRoomButton");
+const currentRoomLabel = document.querySelector("#currentRoomLabel");
 const teamNameInput = document.querySelector("#teamNameInput");
 const setTeamButton = document.querySelector("#setTeamButton");
 const currentTeamLabel = document.querySelector("#currentTeamLabel");
@@ -16,20 +43,124 @@ const STORAGE_KEYS = {
   history: "draftHistory",
   roundNumber: "draftRoundNumber",
   currentTeamName: "draftCurrentTeamName",
+  lastRoomId: "draftLastRoomId",
 };
 
+let db = null;
+let currentRoomId = "";
+let currentRoomRef = null;
+let unsubscribeRoom = null;
 let currentTeamName = "";
 let draftCount = 0;
 let draftHistoryData = [];
+let hasRenderedRoomSnapshot = false;
+let lastRoomAnnouncementSignature = "";
 
-function saveDraftData() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(draftHistoryData));
-    localStorage.setItem(STORAGE_KEYS.roundNumber, String(draftCount));
-    localStorage.setItem(STORAGE_KEYS.currentTeamName, currentTeamName);
-  } catch (error) {
-    console.error("ドラフト情報の保存に失敗しました", error);
+function isFirebaseConfigReady() {
+  return (
+    firebaseConfig.apiKey.trim() !== "" &&
+    firebaseConfig.projectId.trim() !== "" &&
+    firebaseConfig.appId.trim() !== ""
+  );
+}
+
+function initializeFirebase() {
+  if (!isFirebaseConfigReady()) {
+    currentRoomLabel.textContent = "現在のルーム：未入室";
+    console.warn("script.jsのfirebaseConfigを設定するとオンライン機能を使えます。");
+    return;
   }
+
+  try {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+  } catch (error) {
+    console.error("Firebaseの初期化に失敗しました", error);
+    message.textContent = "Firebaseの初期化に失敗しました。設定内容を確認してください。";
+  }
+}
+
+function getNowISOString() {
+  return new Date().toISOString();
+}
+
+function saveLocalSettings() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.currentTeamName, currentTeamName);
+
+    if (currentRoomId !== "") {
+      localStorage.setItem(STORAGE_KEYS.lastRoomId, currentRoomId);
+    }
+  } catch (error) {
+    console.error("ローカル設定の保存に失敗しました", error);
+  }
+}
+
+function normalizeHistoryItem(historyItem) {
+  if (historyItem === null || typeof historyItem !== "object") {
+    return null;
+  }
+
+  const roundNumber = Number(historyItem.round ?? historyItem.roundNumber);
+
+  if (
+    !Number.isInteger(roundNumber) ||
+    roundNumber < 1 ||
+    typeof historyItem.teamName !== "string" ||
+    typeof historyItem.playerName !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    roundNumber: roundNumber,
+    teamName: historyItem.teamName,
+    playerName: historyItem.playerName,
+    createdAt: typeof historyItem.createdAt === "string" ? historyItem.createdAt : "",
+  };
+}
+
+function normalizeHistory(history) {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  return history
+    .map((historyItem) => normalizeHistoryItem(historyItem))
+    .filter((historyItem) => historyItem !== null);
+}
+
+function toFirestoreHistoryItem(historyItem) {
+  return {
+    round: historyItem.roundNumber,
+    teamName: historyItem.teamName,
+    playerName: historyItem.playerName,
+    createdAt: historyItem.createdAt || getNowISOString(),
+  };
+}
+
+function getCurrentRound(roomData, history) {
+  const currentRound = Number(roomData.currentRound);
+
+  if (Number.isInteger(currentRound) && currentRound >= 1) {
+    return currentRound;
+  }
+
+  return history.length + 1;
+}
+
+function createInitialRoomData(roomId) {
+  const now = getNowISOString();
+
+  return {
+    roomId: roomId,
+    currentRound: 1,
+    currentTeamName: "",
+    currentPlayerName: "",
+    history: [],
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function loadDraftData() {
@@ -37,29 +168,15 @@ function loadDraftData() {
     const savedHistory = localStorage.getItem(STORAGE_KEYS.history);
     const savedRoundNumber = localStorage.getItem(STORAGE_KEYS.roundNumber);
     const savedTeamName = localStorage.getItem(STORAGE_KEYS.currentTeamName);
+    const savedRoomId = localStorage.getItem(STORAGE_KEYS.lastRoomId);
+
+    if (savedRoomId !== null) {
+      roomIdInput.value = savedRoomId;
+    }
 
     if (savedHistory !== null) {
       try {
-        const parsedHistory = JSON.parse(savedHistory);
-
-        if (Array.isArray(parsedHistory)) {
-          draftHistoryData = parsedHistory
-            .filter((historyItem) => {
-              return (
-                historyItem !== null &&
-                typeof historyItem.playerName === "string" &&
-                typeof historyItem.teamName === "string" &&
-                Number.isInteger(historyItem.roundNumber)
-              );
-            })
-            .map((historyItem) => {
-              return {
-                playerName: historyItem.playerName,
-                teamName: historyItem.teamName,
-                roundNumber: historyItem.roundNumber,
-              };
-            });
-        }
+        draftHistoryData = normalizeHistory(JSON.parse(savedHistory));
       } catch (error) {
         console.error("保存された指名履歴の読み込みに失敗しました", error);
         draftHistoryData = [];
@@ -131,38 +248,160 @@ function renderDraftHistory() {
   });
 }
 
-function resetDraftHistory() {
-  const shouldReset = confirm("本当に指名履歴をリセットしますか？");
+function playAnnouncementAnimation() {
+  announcement.classList.remove("is-active");
+
+  setTimeout(() => {
+    announcement.classList.add("is-active");
+  }, 10);
+}
+
+function applyRoomData(roomData) {
+  const history = normalizeHistory(roomData.history);
+  const latestHistory = history[history.length - 1];
+  const currentRound = getCurrentRound(roomData, history);
+  const nextSignature = latestHistory
+    ? `${currentRoomId}:${latestHistory.roundNumber}:${latestHistory.teamName}:${latestHistory.playerName}`
+    : `${currentRoomId}:empty`;
+  const shouldAnimate =
+    hasRenderedRoomSnapshot &&
+    latestHistory !== undefined &&
+    nextSignature !== lastRoomAnnouncementSignature;
+
+  draftHistoryData = history;
+  draftCount = latestHistory ? latestHistory.roundNumber : 0;
+  renderDraftHistory();
+
+  if (latestHistory) {
+    roundText.textContent = `第${latestHistory.roundNumber}巡選択希望選手`;
+    announcementTeamName.textContent = roomData.currentTeamName || latestHistory.teamName;
+    announcedName.textContent = roomData.currentPlayerName || latestHistory.playerName;
+  } else {
+    roundText.textContent = `第${currentRound}巡選択希望選手`;
+    announcementTeamName.textContent = currentTeamName !== "" ? currentTeamName : INITIAL_TEAM_TEXT;
+    announcedName.textContent = INITIAL_PLAYER_TEXT;
+  }
+
+  if (shouldAnimate) {
+    playAnnouncementAnimation();
+  }
+
+  hasRenderedRoomSnapshot = true;
+  lastRoomAnnouncementSignature = nextSignature;
+}
+
+function startRoomListener() {
+  if (unsubscribeRoom !== null) {
+    unsubscribeRoom();
+  }
+
+  hasRenderedRoomSnapshot = false;
+  lastRoomAnnouncementSignature = "";
+
+  unsubscribeRoom = onSnapshot(
+    currentRoomRef,
+    (roomSnapshot) => {
+      if (!roomSnapshot.exists()) {
+        message.textContent = "ルーム情報が見つかりませんでした。もう一度入室してください。";
+        return;
+      }
+
+      applyRoomData(roomSnapshot.data());
+    },
+    (error) => {
+      console.error("Firebaseからの読み込みに失敗しました", error);
+      message.textContent = "Firebaseからルーム情報を読み込めませんでした。時間をおいて再度お試しください。";
+    }
+  );
+}
+
+async function joinRoom() {
+  const roomId = roomIdInput.value.trim();
+
+  if (roomId === "") {
+    message.textContent = "ルームIDを入力してください";
+    return;
+  }
+
+  if (roomId.includes("/")) {
+    message.textContent = "ルームIDには「/」を使わないでください";
+    return;
+  }
+
+  if (db === null) {
+    message.textContent = "Firebase設定がまだ入っていません。script.jsのfirebaseConfigを設定してください。";
+    return;
+  }
+
+  joinRoomButton.disabled = true;
+  joinRoomButton.textContent = "入室中";
+  message.textContent = "";
+
+  try {
+    currentRoomId = roomId;
+    currentRoomRef = doc(db, "rooms", currentRoomId);
+
+    const roomSnapshot = await getDoc(currentRoomRef);
+
+    if (!roomSnapshot.exists()) {
+      await setDoc(currentRoomRef, createInitialRoomData(currentRoomId));
+    }
+
+    currentRoomLabel.textContent = `現在のルーム：${currentRoomId}`;
+    saveLocalSettings();
+    startRoomListener();
+  } catch (error) {
+    console.error("ルームへの入室に失敗しました", error);
+    currentRoomId = "";
+    currentRoomRef = null;
+    currentRoomLabel.textContent = "現在のルーム：未入室";
+    message.textContent = "Firebaseへの接続に失敗しました。設定や通信状態を確認してください。";
+  } finally {
+    joinRoomButton.disabled = false;
+    joinRoomButton.textContent = "入室";
+  }
+}
+
+async function resetDraftHistory() {
+  if (currentRoomId === "" || currentRoomRef === null) {
+    message.textContent = "先にルームへ入室してください";
+    return;
+  }
+
+  const shouldReset = confirm("このルームの指名履歴を全員分リセットします。本当によろしいですか？");
 
   if (!shouldReset) {
     return;
   }
 
-  draftHistoryData = [];
-  draftCount = 0;
-  roundText.textContent = "第1巡選択希望選手";
-  announcedName.textContent = "ここに名前が表示されます";
+  resetButton.disabled = true;
   message.textContent = "";
 
-  if (currentTeamName !== "") {
-    announcementTeamName.textContent = currentTeamName;
-  } else {
-    announcementTeamName.textContent = "チーム名を設定してください";
-  }
-
-  renderDraftHistory();
-
   try {
-    localStorage.removeItem(STORAGE_KEYS.history);
-    localStorage.removeItem(STORAGE_KEYS.roundNumber);
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+      const now = getNowISOString();
 
-    if (currentTeamName !== "") {
-      localStorage.setItem(STORAGE_KEYS.currentTeamName, currentTeamName);
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.currentTeamName);
-    }
+      if (roomSnapshot.exists()) {
+        transaction.update(currentRoomRef, {
+          history: [],
+          currentRound: 1,
+          currentPlayerName: "",
+          updatedAt: now,
+        });
+      } else {
+        transaction.set(currentRoomRef, {
+          ...createInitialRoomData(currentRoomId),
+          currentTeamName: currentTeamName,
+          updatedAt: now,
+        });
+      }
+    });
   } catch (error) {
-    console.error("ドラフト情報のリセットに失敗しました", error);
+    console.error("Firebase上の指名履歴のリセットに失敗しました", error);
+    message.textContent = "Firebase上の指名履歴をリセットできませんでした。もう一度お試しください。";
+  } finally {
+    resetButton.disabled = false;
   }
 }
 
@@ -177,13 +416,22 @@ function setTeamName() {
 
   currentTeamName = teamName;
   currentTeamLabel.textContent = `現在のチーム：${currentTeamName}`;
-  announcementTeamName.textContent = currentTeamName;
+
+  if (draftHistoryData.length === 0) {
+    announcementTeamName.textContent = currentTeamName;
+  }
+
   message.textContent = "";
-  saveDraftData();
+  saveLocalSettings();
 }
 
-function announcePlayer() {
+async function announcePlayer() {
   const playerName = playerNameInput.value.trim();
+
+  if (currentRoomId === "" || currentRoomRef === null) {
+    message.textContent = "先にルームへ入室してください";
+    return;
+  }
 
   // チーム名が未設定のときは、先にチーム名を設定してもらいます
   if (currentTeamName === "") {
@@ -197,40 +445,67 @@ function announcePlayer() {
     return;
   }
 
+  announceButton.disabled = true;
   message.textContent = "";
-  announcedName.textContent = playerName;
-  draftCount = draftCount + 1;
-  roundText.textContent = `第${draftCount}巡選択希望選手`;
-  announcementTeamName.textContent = currentTeamName;
 
-  addDraftHistory(playerName, currentTeamName, draftCount);
-  saveDraftData();
-  playerNameInput.value = "";
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+      const now = getNowISOString();
+      const roomData = roomSnapshot.exists() ? roomSnapshot.data() : createInitialRoomData(currentRoomId);
+      const latestHistory = normalizeHistory(roomData.history);
+      const nextRound = latestHistory.length + 1;
+      const newHistoryItem = {
+        roundNumber: nextRound,
+        teamName: currentTeamName,
+        playerName: playerName,
+        createdAt: now,
+      };
+      const nextHistory = latestHistory.concat(newHistoryItem).map((historyItem) => {
+        return toFirestoreHistoryItem(historyItem);
+      });
+      const nextRoomData = {
+        roomId: currentRoomId,
+        currentRound: nextRound + 1,
+        currentTeamName: currentTeamName,
+        currentPlayerName: playerName,
+        history: nextHistory,
+        updatedAt: now,
+      };
 
-  // 連続で押しても毎回アニメーションするように、一度クラスを外します
-  announcement.classList.remove("is-active");
+      if (roomSnapshot.exists()) {
+        transaction.update(currentRoomRef, nextRoomData);
+      } else {
+        transaction.set(currentRoomRef, {
+          ...nextRoomData,
+          createdAt: now,
+        });
+      }
+    });
 
-  setTimeout(() => {
-    announcement.classList.add("is-active");
-  }, 10);
+    playerNameInput.value = "";
+  } catch (error) {
+    console.error("Firebaseへの指名結果の保存に失敗しました", error);
+    message.textContent = "Firebaseへの保存に失敗しました。時間をおいてもう一度お試しください。";
+  } finally {
+    announceButton.disabled = false;
+  }
 }
 
-function addDraftHistory(playerName, teamName, roundNumber) {
-  // 新しい履歴をデータに追加して、履歴リストを表示し直します
-  draftHistoryData.push({
-    playerName: playerName,
-    teamName: teamName,
-    roundNumber: roundNumber,
-  });
-
-  renderDraftHistory();
-}
+joinRoomButton.addEventListener("click", joinRoom);
 
 setTeamButton.addEventListener("click", setTeamName);
 
 announceButton.addEventListener("click", announcePlayer);
 
 resetButton.addEventListener("click", resetDraftHistory);
+
+// ルームIDの入力欄でもEnterキーで入室できるようにします
+roomIdInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    joinRoom();
+  }
+});
 
 // Enterキーでも指名できるようにします
 playerNameInput.addEventListener("keydown", (event) => {
@@ -246,4 +521,5 @@ teamNameInput.addEventListener("keydown", (event) => {
   }
 });
 
+initializeFirebase();
 loadDraftData();

@@ -71,6 +71,7 @@ h1 {
 }
 
 /* 「チーム名」と「指名したい名前」の入力エリア全体 */
+.room-area,
 .team-area,
 .input-area {
   margin: 0 0 24px;
@@ -132,10 +133,20 @@ button:hover {
 }
 
 /* 「現在のチーム：未設定」または設定後のチーム名表示 */
+.current-room,
 .current-team {
   margin: 10px 0 0;
   color: #174ea6;
   font-weight: bold;
+}
+
+button:disabled {
+  background: #8b98aa;
+  cursor: not-allowed;
+}
+
+button:disabled:hover {
+  background: #8b98aa;
 }
 
 /* 「第1巡選択希望選手」「チーム名」「ここに名前が表示されます」の発表エリア */

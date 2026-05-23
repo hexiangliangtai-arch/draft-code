@@ -14,6 +14,15 @@
 
       <div class="draft-layout">
         <div class="draft-main-panel">
+          <div class="room-area">
+            <label for="roomIdInput">ルームID</label>
+            <div class="input-row">
+              <input type="text" id="roomIdInput" placeholder="例：draft2026">
+              <button id="joinRoomButton" type="button">入室</button>
+            </div>
+            <p id="currentRoomLabel" class="current-room">現在のルーム：未入室</p>
+          </div>
+
           <div class="team-area">
             <label for="teamNameInput">チーム名</label>
             <div class="input-row">
@@ -52,6 +61,6 @@
     </section>
   </main>
 
-  <script src="script.js"></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>
