@@ -23,14 +23,16 @@ const INITIAL_TEAM_TEXT = "チーム名を設定してください";
 const INITIAL_PLAYER_TEXT = "ここに名前が表示されます";
 
 // HTMLの部品をJavaScriptで使えるように取得します
+const startScreen = document.querySelector("#startScreen");
+const draftScreen = document.querySelector("#draftScreen");
 const roomIdInput = document.querySelector("#roomIdInput");
 const joinRoomButton = document.querySelector("#joinRoomButton");
 const currentRoomLabel = document.querySelector("#currentRoomLabel");
 const teamNameInput = document.querySelector("#teamNameInput");
-const setTeamButton = document.querySelector("#setTeamButton");
 const currentTeamLabel = document.querySelector("#currentTeamLabel");
 const playerNameInput = document.querySelector("#playerName");
 const announceButton = document.querySelector("#announceButton");
+const startMessage = document.querySelector("#startMessage");
 const message = document.querySelector("#message");
 const announcement = document.querySelector("#announcement");
 const roundText = document.querySelector("#roundText");
@@ -76,7 +78,7 @@ function initializeFirebase() {
     db = getFirestore(app);
   } catch (error) {
     console.error("Firebaseの初期化に失敗しました", error);
-    message.textContent = "Firebaseの初期化に失敗しました。設定内容を確認してください。";
+    startMessage.textContent = "Firebaseの初期化に失敗しました。設定内容を確認してください。";
   }
 }
 
@@ -94,6 +96,11 @@ function saveLocalSettings() {
   } catch (error) {
     console.error("ローカル設定の保存に失敗しました", error);
   }
+}
+
+function showDraftScreen() {
+  startScreen.classList.add("is-hidden");
+  draftScreen.classList.remove("is-hidden");
 }
 
 function normalizeHistoryItem(historyItem) {
@@ -317,28 +324,35 @@ function startRoomListener() {
 
 async function joinRoom() {
   const roomId = roomIdInput.value.trim();
+  const teamName = teamNameInput.value.trim();
 
   if (roomId === "") {
-    message.textContent = "ルームIDを入力してください";
+    startMessage.textContent = "ルームIDを入力してください";
+    return;
+  }
+
+  if (teamName === "") {
+    startMessage.textContent = "チーム名を入力してください";
     return;
   }
 
   if (roomId.includes("/")) {
-    message.textContent = "ルームIDには「/」を使わないでください";
+    startMessage.textContent = "ルームIDには「/」を使わないでください";
     return;
   }
 
   if (db === null) {
-    message.textContent = "Firebase設定がまだ入っていません。script.jsのfirebaseConfigを設定してください。";
+    startMessage.textContent = "Firebase設定がまだ入っていません。script.jsのfirebaseConfigを設定してください。";
     return;
   }
 
   joinRoomButton.disabled = true;
   joinRoomButton.textContent = "入室中";
-  message.textContent = "";
+  startMessage.textContent = "";
 
   try {
     currentRoomId = roomId;
+    currentTeamName = teamName;
     currentRoomRef = doc(db, "rooms", currentRoomId);
 
     const roomSnapshot = await getDoc(currentRoomRef);
@@ -348,17 +362,21 @@ async function joinRoom() {
     }
 
     currentRoomLabel.textContent = `現在のルーム：${currentRoomId}`;
+    currentTeamLabel.textContent = `現在のチーム：${currentTeamName}`;
+    announcementTeamName.textContent = currentTeamName;
+    message.textContent = "";
     saveLocalSettings();
     startRoomListener();
+    showDraftScreen();
   } catch (error) {
     console.error("ルームへの入室に失敗しました", error);
     currentRoomId = "";
     currentRoomRef = null;
     currentRoomLabel.textContent = "現在のルーム：未入室";
-    message.textContent = "Firebaseへの接続に失敗しました。設定や通信状態を確認してください。";
+    startMessage.textContent = "Firebaseへの接続に失敗しました。設定や通信状態を確認してください。";
   } finally {
     joinRoomButton.disabled = false;
-    joinRoomButton.textContent = "入室";
+    joinRoomButton.textContent = "入室する";
   }
 }
 
@@ -403,26 +421,6 @@ async function resetDraftHistory() {
   } finally {
     resetButton.disabled = false;
   }
-}
-
-function setTeamName() {
-  const teamName = teamNameInput.value.trim();
-
-  // チーム名が空のときは、設定せずにメッセージを表示します
-  if (teamName === "") {
-    message.textContent = "チーム名を入力してください";
-    return;
-  }
-
-  currentTeamName = teamName;
-  currentTeamLabel.textContent = `現在のチーム：${currentTeamName}`;
-
-  if (draftHistoryData.length === 0) {
-    announcementTeamName.textContent = currentTeamName;
-  }
-
-  message.textContent = "";
-  saveLocalSettings();
 }
 
 async function announcePlayer() {
@@ -494,8 +492,6 @@ async function announcePlayer() {
 
 joinRoomButton.addEventListener("click", joinRoom);
 
-setTeamButton.addEventListener("click", setTeamName);
-
 announceButton.addEventListener("click", announcePlayer);
 
 resetButton.addEventListener("click", resetDraftHistory);
@@ -514,10 +510,10 @@ playerNameInput.addEventListener("keydown", (event) => {
   }
 });
 
-// チーム名の入力欄でもEnterキーで設定できるようにします
+// チーム名の入力欄でもEnterキーで入室できるようにします
 teamNameInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    setTeamName();
+    joinRoom();
   }
 });
 

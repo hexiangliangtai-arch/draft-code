@@ -34,6 +34,24 @@ body {
   text-align: center;
 }
 
+.is-hidden {
+  display: none;
+}
+
+.start-screen {
+  width: min(620px, 100%);
+}
+
+.start-form {
+  max-width: 460px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.start-form button {
+  width: 100%;
+}
+
 /* 操作・発表エリアと履歴エリアを左右に並べる外枠 */
 .draft-layout {
   display: grid;
@@ -68,6 +86,14 @@ body {
 h1 {
   margin: 0 0 28px;
   font-size: clamp(32px, 6vw, 56px);
+}
+
+.current-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  justify-content: center;
+  margin: -12px 0 24px;
 }
 
 /* 「チーム名」と「指名したい名前」の入力エリア全体 */
@@ -106,7 +132,7 @@ input {
   font-size: 18px;
 }
 
-/* 「チーム名を設定」「指名する」などのボタン */
+/* 「入室する」「指名する」などのボタン */
 button {
   flex-shrink: 0;
   padding: 14px 22px;
@@ -135,7 +161,7 @@ button:hover {
 /* 「現在のチーム：未設定」または設定後のチーム名表示 */
 .current-room,
 .current-team {
-  margin: 10px 0 0;
+  margin: 0;
   color: #174ea6;
   font-weight: bold;
 }
