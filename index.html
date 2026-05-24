@@ -35,6 +35,7 @@
       <div class="current-status">
         <p id="currentRoomLabel" class="current-room">現在のルーム：未入室</p>
         <p id="currentTeamLabel" class="current-team">現在のチーム：未設定</p>
+        <p id="nextRoundLabel" class="next-round-label">次のあなたの指名：第1巡目</p>
       </div>
 
       <div class="draft-layout">
@@ -61,7 +62,19 @@
               <h2 id="historyTitle">ドラフト履歴</h2>
               <button id="resetButton" class="reset-button" type="button">履歴をリセット</button>
             </div>
-            <ol id="draftHistory" class="draft-history"></ol>
+
+            <div class="history-tabs" role="tablist" aria-label="履歴表示の切り替え">
+              <button id="overallHistoryTab" class="history-tab is-active" type="button">全体履歴</button>
+              <button id="playerHistoryTab" class="history-tab" type="button">プレイヤー別</button>
+            </div>
+
+            <div id="overallHistoryPanel" class="history-panel">
+              <ol id="draftHistory" class="draft-history"></ol>
+            </div>
+
+            <div id="playerHistoryPanel" class="history-panel is-hidden">
+              <div id="playerHistory" class="player-history"></div>
+            </div>
           </section>
         </aside>
       </div>

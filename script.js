@@ -30,6 +30,7 @@ const joinRoomButton = document.querySelector("#joinRoomButton");
 const currentRoomLabel = document.querySelector("#currentRoomLabel");
 const teamNameInput = document.querySelector("#teamNameInput");
 const currentTeamLabel = document.querySelector("#currentTeamLabel");
+const nextRoundLabel = document.querySelector("#nextRoundLabel");
 const playerNameInput = document.querySelector("#playerName");
 const announceButton = document.querySelector("#announceButton");
 const startMessage = document.querySelector("#startMessage");
@@ -39,6 +40,11 @@ const roundText = document.querySelector("#roundText");
 const announcementTeamName = document.querySelector("#announcementTeamName");
 const announcedName = document.querySelector("#announcedName");
 const draftHistory = document.querySelector("#draftHistory");
+const playerHistory = document.querySelector("#playerHistory");
+const overallHistoryTab = document.querySelector("#overallHistoryTab");
+const playerHistoryTab = document.querySelector("#playerHistoryTab");
+const overallHistoryPanel = document.querySelector("#overallHistoryPanel");
+const playerHistoryPanel = document.querySelector("#playerHistoryPanel");
 const resetButton = document.querySelector("#resetButton");
 
 const STORAGE_KEYS = {
@@ -146,14 +152,21 @@ function toFirestoreHistoryItem(historyItem) {
   };
 }
 
-function getCurrentRound(roomData, history) {
-  const currentRound = Number(roomData.currentRound);
-
-  if (Number.isInteger(currentRound) && currentRound >= 1) {
-    return currentRound;
+function getNextRoundForTeam(history, teamName) {
+  if (teamName === "") {
+    return 1;
   }
 
-  return history.length + 1;
+  const teamHistory = history.filter((historyItem) => {
+    return historyItem.teamName === teamName;
+  });
+
+  return teamHistory.length + 1;
+}
+
+function updateNextRoundLabel() {
+  const nextRound = getNextRoundForTeam(draftHistoryData, currentTeamName);
+  nextRoundLabel.textContent = `次のあなたの指名：第${nextRound}巡目`;
 }
 
 function createInitialRoomData(roomId) {
@@ -232,6 +245,21 @@ function loadDraftData() {
 
 function renderDraftHistory() {
   draftHistory.innerHTML = "";
+  playerHistory.innerHTML = "";
+
+  if (draftHistoryData.length === 0) {
+    const emptyHistoryItem = document.createElement("li");
+    emptyHistoryItem.className = "history-empty";
+    emptyHistoryItem.textContent = "履歴はまだありません";
+    draftHistory.appendChild(emptyHistoryItem);
+
+    const emptyPlayerHistory = document.createElement("p");
+    emptyPlayerHistory.className = "history-empty";
+    emptyPlayerHistory.textContent = "プレイヤー別履歴はまだありません";
+    playerHistory.appendChild(emptyPlayerHistory);
+    updateNextRoundLabel();
+    return;
+  }
 
   draftHistoryData.forEach((historyItem) => {
     const listItem = document.createElement("li");
@@ -253,6 +281,73 @@ function renderDraftHistory() {
     listItem.appendChild(nameText);
     draftHistory.appendChild(listItem);
   });
+
+  renderPlayerHistory();
+  updateNextRoundLabel();
+}
+
+function renderPlayerHistory() {
+  const teamNames = [];
+
+  draftHistoryData.forEach((historyItem) => {
+    if (!teamNames.includes(historyItem.teamName)) {
+      teamNames.push(historyItem.teamName);
+    }
+  });
+
+  if (currentTeamName !== "" && teamNames.includes(currentTeamName)) {
+    teamNames.sort((firstTeamName, secondTeamName) => {
+      if (firstTeamName === currentTeamName) {
+        return -1;
+      }
+
+      if (secondTeamName === currentTeamName) {
+        return 1;
+      }
+
+      return 0;
+    });
+  }
+
+  teamNames.forEach((teamName) => {
+    const group = document.createElement("section");
+    const title = document.createElement("h3");
+    const list = document.createElement("ol");
+    const teamHistory = draftHistoryData.filter((historyItem) => {
+      return historyItem.teamName === teamName;
+    });
+
+    group.className = "player-history-group";
+
+    if (teamName === currentTeamName) {
+      group.classList.add("is-current");
+      title.textContent = `自分の指名履歴：${teamName}`;
+    } else {
+      title.textContent = `【${teamName}】`;
+    }
+
+    title.className = "player-history-title";
+    list.className = "player-history-list";
+
+    teamHistory.forEach((historyItem) => {
+      const listItem = document.createElement("li");
+      listItem.textContent = `第${historyItem.roundNumber}巡目　${historyItem.playerName}`;
+      list.appendChild(listItem);
+    });
+
+    group.appendChild(title);
+    group.appendChild(list);
+    playerHistory.appendChild(group);
+  });
+}
+
+function showHistoryView(viewName) {
+  const isPlayerHistory = viewName === "player";
+
+  overallHistoryPanel.classList.toggle("is-hidden", isPlayerHistory);
+  playerHistoryPanel.classList.toggle("is-hidden", !isPlayerHistory);
+  overallHistoryTab.classList.toggle("is-active", !isPlayerHistory);
+  playerHistoryTab.classList.toggle("is-active", isPlayerHistory);
 }
 
 function playAnnouncementAnimation() {
@@ -266,7 +361,7 @@ function playAnnouncementAnimation() {
 function applyRoomData(roomData) {
   const history = normalizeHistory(roomData.history);
   const latestHistory = history[history.length - 1];
-  const currentRound = getCurrentRound(roomData, history);
+  const nextMyRound = getNextRoundForTeam(history, currentTeamName);
   const nextSignature = latestHistory
     ? `${currentRoomId}:${latestHistory.roundNumber}:${latestHistory.teamName}:${latestHistory.playerName}`
     : `${currentRoomId}:empty`;
@@ -276,7 +371,7 @@ function applyRoomData(roomData) {
     nextSignature !== lastRoomAnnouncementSignature;
 
   draftHistoryData = history;
-  draftCount = latestHistory ? latestHistory.roundNumber : 0;
+  draftCount = nextMyRound - 1;
   renderDraftHistory();
 
   if (latestHistory) {
@@ -284,7 +379,7 @@ function applyRoomData(roomData) {
     announcementTeamName.textContent = roomData.currentTeamName || latestHistory.teamName;
     announcedName.textContent = roomData.currentPlayerName || latestHistory.playerName;
   } else {
-    roundText.textContent = `第${currentRound}巡選択希望選手`;
+    roundText.textContent = `第${nextMyRound}巡選択希望選手`;
     announcementTeamName.textContent = currentTeamName !== "" ? currentTeamName : INITIAL_TEAM_TEXT;
     announcedName.textContent = INITIAL_PLAYER_TEXT;
   }
@@ -364,6 +459,7 @@ async function joinRoom() {
     currentRoomLabel.textContent = `現在のルーム：${currentRoomId}`;
     currentTeamLabel.textContent = `現在のチーム：${currentTeamName}`;
     announcementTeamName.textContent = currentTeamName;
+    updateNextRoundLabel();
     message.textContent = "";
     saveLocalSettings();
     startRoomListener();
@@ -452,7 +548,10 @@ async function announcePlayer() {
       const now = getNowISOString();
       const roomData = roomSnapshot.exists() ? roomSnapshot.data() : createInitialRoomData(currentRoomId);
       const latestHistory = normalizeHistory(roomData.history);
-      const nextRound = latestHistory.length + 1;
+      const myHistory = latestHistory.filter((historyItem) => {
+        return historyItem.teamName === currentTeamName;
+      });
+      const nextRound = myHistory.length + 1;
       const newHistoryItem = {
         roundNumber: nextRound,
         teamName: currentTeamName,
@@ -515,6 +614,14 @@ teamNameInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     joinRoom();
   }
+});
+
+overallHistoryTab.addEventListener("click", () => {
+  showHistoryView("overall");
+});
+
+playerHistoryTab.addEventListener("click", () => {
+  showHistoryView("player");
 });
 
 initializeFirebase();
