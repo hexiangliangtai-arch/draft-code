@@ -1,11 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
 import {
   doc,
-  getDoc,
   getFirestore,
   onSnapshot,
   runTransaction,
-  setDoc,
 } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
 // TODO: Firebaseコンソールで取得したWebアプリ用のfirebaseConfigに貼り替えてください。
@@ -39,6 +37,7 @@ const announcement = document.querySelector("#announcement");
 const roundText = document.querySelector("#roundText");
 const announcementTeamName = document.querySelector("#announcementTeamName");
 const announcedName = document.querySelector("#announcedName");
+const participantsList = document.querySelector("#participantsList");
 const draftHistory = document.querySelector("#draftHistory");
 const playerHistory = document.querySelector("#playerHistory");
 const overallHistoryTab = document.querySelector("#overallHistoryTab");
@@ -61,6 +60,7 @@ let unsubscribeRoom = null;
 let currentTeamName = "";
 let draftCount = 0;
 let draftHistoryData = [];
+let participantsData = [];
 let hasRenderedRoomSnapshot = false;
 let lastRoomAnnouncementSignature = "";
 
@@ -107,6 +107,49 @@ function saveLocalSettings() {
 function showDraftScreen() {
   startScreen.classList.add("is-hidden");
   draftScreen.classList.remove("is-hidden");
+}
+
+function normalizeParticipant(participant) {
+  if (participant === null || typeof participant !== "object" || typeof participant.teamName !== "string") {
+    return null;
+  }
+
+  const joinedAt = typeof participant.joinedAt === "string" ? participant.joinedAt : "";
+  const lastSeenAt = typeof participant.lastSeenAt === "string" ? participant.lastSeenAt : joinedAt;
+
+  return {
+    teamName: participant.teamName,
+    joinedAt: joinedAt,
+    lastSeenAt: lastSeenAt,
+  };
+}
+
+function normalizeParticipants(participants) {
+  if (!Array.isArray(participants)) {
+    return [];
+  }
+
+  return participants
+    .map((participant) => normalizeParticipant(participant))
+    .filter((participant) => participant !== null && participant.teamName.trim() !== "");
+}
+
+function addOrUpdateParticipant(participants, teamName, now) {
+  const nextParticipants = normalizeParticipants(participants);
+  const existingParticipant = nextParticipants.find((participant) => {
+    return participant.teamName === teamName;
+  });
+
+  if (existingParticipant) {
+    existingParticipant.lastSeenAt = now;
+    return nextParticipants;
+  }
+
+  return nextParticipants.concat({
+    teamName: teamName,
+    joinedAt: now,
+    lastSeenAt: now,
+  });
 }
 
 function normalizeHistoryItem(historyItem) {
@@ -169,7 +212,7 @@ function updateNextRoundLabel() {
   nextRoundLabel.textContent = `次のあなたの指名：第${nextRound}巡目`;
 }
 
-function createInitialRoomData(roomId) {
+function createInitialRoomData(roomId, participantTeamName = "") {
   const now = getNowISOString();
 
   return {
@@ -178,6 +221,7 @@ function createInitialRoomData(roomId) {
     currentTeamName: "",
     currentPlayerName: "",
     history: [],
+    participants: participantTeamName !== "" ? addOrUpdateParticipant([], participantTeamName, now) : [],
     createdAt: now,
     updatedAt: now,
   };
@@ -286,6 +330,30 @@ function renderDraftHistory() {
   updateNextRoundLabel();
 }
 
+function renderParticipants() {
+  participantsList.innerHTML = "";
+
+  if (participantsData.length === 0) {
+    const emptyParticipant = document.createElement("li");
+    emptyParticipant.textContent = "参加者はまだいません";
+    participantsList.appendChild(emptyParticipant);
+    return;
+  }
+
+  participantsData.forEach((participant) => {
+    const listItem = document.createElement("li");
+
+    if (participant.teamName === currentTeamName) {
+      listItem.className = "is-current";
+      listItem.textContent = `${participant.teamName}（自分）`;
+    } else {
+      listItem.textContent = participant.teamName;
+    }
+
+    participantsList.appendChild(listItem);
+  });
+}
+
 function renderPlayerHistory() {
   const teamNames = [];
 
@@ -360,6 +428,7 @@ function playAnnouncementAnimation() {
 
 function applyRoomData(roomData) {
   const history = normalizeHistory(roomData.history);
+  const participants = normalizeParticipants(roomData.participants);
   const latestHistory = history[history.length - 1];
   const nextMyRound = getNextRoundForTeam(history, currentTeamName);
   const nextSignature = latestHistory
@@ -371,8 +440,10 @@ function applyRoomData(roomData) {
     nextSignature !== lastRoomAnnouncementSignature;
 
   draftHistoryData = history;
+  participantsData = participants;
   draftCount = nextMyRound - 1;
   renderDraftHistory();
+  renderParticipants();
 
   if (latestHistory) {
     roundText.textContent = `第${latestHistory.roundNumber}巡選択希望選手`;
@@ -450,11 +521,22 @@ async function joinRoom() {
     currentTeamName = teamName;
     currentRoomRef = doc(db, "rooms", currentRoomId);
 
-    const roomSnapshot = await getDoc(currentRoomRef);
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+      const now = getNowISOString();
 
-    if (!roomSnapshot.exists()) {
-      await setDoc(currentRoomRef, createInitialRoomData(currentRoomId));
-    }
+      if (roomSnapshot.exists()) {
+        const roomData = roomSnapshot.data();
+        const nextParticipants = addOrUpdateParticipant(roomData.participants, currentTeamName, now);
+
+        transaction.update(currentRoomRef, {
+          participants: nextParticipants,
+          updatedAt: now,
+        });
+      } else {
+        transaction.set(currentRoomRef, createInitialRoomData(currentRoomId, currentTeamName));
+      }
+    });
 
     currentRoomLabel.textContent = `現在のルーム：${currentRoomId}`;
     currentTeamLabel.textContent = `現在のチーム：${currentTeamName}`;
@@ -505,7 +587,7 @@ async function resetDraftHistory() {
         });
       } else {
         transaction.set(currentRoomRef, {
-          ...createInitialRoomData(currentRoomId),
+          ...createInitialRoomData(currentRoomId, currentTeamName),
           currentTeamName: currentTeamName,
           updatedAt: now,
         });
@@ -575,6 +657,7 @@ async function announcePlayer() {
       } else {
         transaction.set(currentRoomRef, {
           ...nextRoomData,
+          participants: addOrUpdateParticipant(roomData.participants, currentTeamName, now),
           createdAt: now,
         });
       }

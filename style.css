@@ -210,6 +210,42 @@ button:disabled:hover {
 }
 
 /* 「ドラフト履歴」見出しと履歴リストのエリア */
+.participants-area {
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+  border-bottom: 2px solid #d7e6fa;
+  text-align: left;
+}
+
+.participants-area h2 {
+  margin: 0 0 12px;
+  color: #174ea6;
+  font-size: clamp(20px, 3vw, 28px);
+}
+
+.participants-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.participants-list li {
+  padding: 10px 12px;
+  border-left: 5px solid #174ea6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2933;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.participants-list li.is-current {
+  border-left-color: #c62828;
+  background: #fff8f8;
+}
+
 .history-area {
   margin-top: 0;
   text-align: left;
