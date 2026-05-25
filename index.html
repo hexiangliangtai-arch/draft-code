@@ -66,6 +66,22 @@
             <p id="announcementPlaceholder" class="announcement-placeholder is-hidden" aria-live="polite"></p>
           </div>
 
+          <div id="announcementScreen" class="announcement-screen is-hidden">
+            <p class="announcement-label">ドラフト発表</p>
+            <p id="announcementProgressText" class="announcement-progress">1人目 / 1人</p>
+            <p id="announcementRoundText" class="round-text">第1巡目</p>
+            <p id="announcingTeamName" class="team-text">チーム名</p>
+            <p id="announcingPlayerName" class="announcing-player-name">選手名</p>
+            <button id="nextAnnouncementButton" type="button">次の発表へ</button>
+          </div>
+
+          <div id="roundSummaryScreen" class="round-summary-screen is-hidden">
+            <p class="summary-label">この巡目の指名結果</p>
+            <h2 id="roundSummaryTitle">第1巡目</h2>
+            <ol id="roundSummaryList" class="round-summary-list"></ol>
+            <button id="nextRoundButton" type="button">次の巡目へ</button>
+          </div>
+
           <div id="announcement" class="announcement">
             <p id="roundText" class="round-text">第1巡選択希望選手</p>
             <p id="announcementTeamName" class="team-text">チーム名を設定してください</p>

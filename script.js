@@ -41,6 +41,16 @@ const remainingCountText = document.querySelector("#remainingCountText");
 const remainingParticipantsList = document.querySelector("#remainingParticipantsList");
 const announceReadyButton = document.querySelector("#announceReadyButton");
 const announcementPlaceholder = document.querySelector("#announcementPlaceholder");
+const announcementScreen = document.querySelector("#announcementScreen");
+const announcementProgressText = document.querySelector("#announcementProgressText");
+const announcementRoundText = document.querySelector("#announcementRoundText");
+const announcingTeamName = document.querySelector("#announcingTeamName");
+const announcingPlayerName = document.querySelector("#announcingPlayerName");
+const nextAnnouncementButton = document.querySelector("#nextAnnouncementButton");
+const roundSummaryScreen = document.querySelector("#roundSummaryScreen");
+const roundSummaryTitle = document.querySelector("#roundSummaryTitle");
+const roundSummaryList = document.querySelector("#roundSummaryList");
+const nextRoundButton = document.querySelector("#nextRoundButton");
 const announcement = document.querySelector("#announcement");
 const roundText = document.querySelector("#roundText");
 const announcementTeamName = document.querySelector("#announcementTeamName");
@@ -70,6 +80,8 @@ let draftCount = 0;
 let draftHistoryData = [];
 let participantsData = [];
 let pendingPicksData = {};
+let announcementQueueData = [];
+let currentAnnouncementIndex = 0;
 let currentPhase = "drafting";
 let hasRenderedRoomSnapshot = false;
 let lastRoomAnnouncementSignature = "";
@@ -204,6 +216,68 @@ function normalizePendingPicks(pendingPicks) {
   return normalizedPendingPicks;
 }
 
+function normalizeAnnouncementItem(announcementItem) {
+  if (announcementItem === null || typeof announcementItem !== "object") {
+    return null;
+  }
+
+  const roundNumber = Number(announcementItem.round ?? announcementItem.roundNumber);
+
+  if (
+    typeof announcementItem.teamName !== "string" ||
+    typeof announcementItem.playerName !== "string" ||
+    !Number.isInteger(roundNumber) ||
+    roundNumber < 1
+  ) {
+    return null;
+  }
+
+  return {
+    teamName: announcementItem.teamName,
+    playerName: announcementItem.playerName,
+    round: roundNumber,
+    announced: announcementItem.announced === true,
+    roundKey: typeof announcementItem.roundKey === "string" ? announcementItem.roundKey : "",
+    submittedAt: typeof announcementItem.submittedAt === "string" ? announcementItem.submittedAt : "",
+  };
+}
+
+function normalizeAnnouncementQueue(announcementQueue) {
+  if (!Array.isArray(announcementQueue)) {
+    return [];
+  }
+
+  return announcementQueue
+    .map((announcementItem) => normalizeAnnouncementItem(announcementItem))
+    .filter((announcementItem) => announcementItem !== null);
+}
+
+function toFirestoreAnnouncementItem(announcementItem) {
+  return {
+    teamName: announcementItem.teamName,
+    playerName: announcementItem.playerName,
+    round: announcementItem.round,
+    announced: announcementItem.announced === true,
+    roundKey: announcementItem.roundKey || "",
+    submittedAt: announcementItem.submittedAt || "",
+  };
+}
+
+function buildAnnouncementQueue(participants, pendingPicks, roundKey) {
+  return participants.map((participant) => {
+    const pendingPick = pendingPicks[participant.teamName];
+
+    return {
+      teamName: pendingPick.teamName,
+      playerName: pendingPick.playerName,
+      round: pendingPick.round,
+      announced: false,
+      roundKey: roundKey,
+      submittedAt: pendingPick.submittedAt,
+    };
+  });
+}
+
 function getSubmissionStatus(participants, pendingPicks) {
   const remainingParticipants = participants.filter((participant) => {
     return pendingPicks[participant.teamName] === undefined;
@@ -221,14 +295,36 @@ function hasCurrentPlayerSubmitted() {
   return currentTeamName !== "" && pendingPicksData[currentTeamName] !== undefined;
 }
 
-function showDraftInputScreen() {
-  draftInputScreen.classList.remove("is-hidden");
+function hideRoomPhaseScreens() {
+  draftInputScreen.classList.add("is-hidden");
   draftWaitingScreen.classList.add("is-hidden");
+  announcementScreen.classList.add("is-hidden");
+  roundSummaryScreen.classList.add("is-hidden");
+}
+
+function showDraftInputScreen() {
+  hideRoomPhaseScreens();
+  draftInputScreen.classList.remove("is-hidden");
+  announcement.classList.remove("is-hidden");
 }
 
 function showDraftWaitingScreen() {
+  hideRoomPhaseScreens();
   draftInputScreen.classList.add("is-hidden");
   draftWaitingScreen.classList.remove("is-hidden");
+  announcement.classList.remove("is-hidden");
+}
+
+function showAnnouncementScreen() {
+  hideRoomPhaseScreens();
+  announcement.classList.add("is-hidden");
+  announcementScreen.classList.remove("is-hidden");
+}
+
+function showRoundSummaryScreen() {
+  hideRoomPhaseScreens();
+  announcement.classList.add("is-hidden");
+  roundSummaryScreen.classList.remove("is-hidden");
 }
 
 function normalizeHistoryItem(historyItem) {
@@ -252,6 +348,7 @@ function normalizeHistoryItem(historyItem) {
     teamName: historyItem.teamName,
     playerName: historyItem.playerName,
     createdAt: typeof historyItem.createdAt === "string" ? historyItem.createdAt : "",
+    roundKey: typeof historyItem.roundKey === "string" ? historyItem.roundKey : "",
   };
 }
 
@@ -266,12 +363,18 @@ function normalizeHistory(history) {
 }
 
 function toFirestoreHistoryItem(historyItem) {
-  return {
+  const firestoreHistoryItem = {
     round: historyItem.roundNumber,
     teamName: historyItem.teamName,
     playerName: historyItem.playerName,
     createdAt: historyItem.createdAt || getNowISOString(),
   };
+
+  if (historyItem.roundKey) {
+    firestoreHistoryItem.roundKey = historyItem.roundKey;
+  }
+
+  return firestoreHistoryItem;
 }
 
 function getNextRoundForTeam(history, teamName) {
@@ -302,6 +405,8 @@ function createInitialRoomData(roomId, participantTeamName = "") {
     history: [],
     participants: participantTeamName !== "" ? addOrUpdateParticipant([], participantTeamName, now) : [],
     pendingPicks: {},
+    announcementQueue: [],
+    currentAnnouncementIndex: 0,
     phase: "drafting",
     createdAt: now,
     updatedAt: now,
@@ -479,6 +584,67 @@ function renderWaitingScreen() {
   }
 }
 
+function renderAnnouncementScreen() {
+  showAnnouncementScreen();
+
+  if (announcementQueueData.length === 0) {
+    announcementProgressText.textContent = "0人目 / 0人";
+    announcementRoundText.textContent = "発表待ち";
+    announcingTeamName.textContent = "指名データがありません";
+    announcingPlayerName.textContent = "";
+    nextAnnouncementButton.disabled = true;
+    return;
+  }
+
+  const safeIndex = Math.min(Math.max(currentAnnouncementIndex, 0), announcementQueueData.length - 1);
+  const currentAnnouncement = announcementQueueData[safeIndex];
+
+  announcementProgressText.textContent = `${safeIndex + 1}人目 / ${announcementQueueData.length}人`;
+  announcementRoundText.textContent = `第${currentAnnouncement.round}巡目`;
+  announcingTeamName.textContent = currentAnnouncement.teamName;
+  announcingPlayerName.textContent = currentAnnouncement.playerName;
+  nextAnnouncementButton.textContent =
+    safeIndex >= announcementQueueData.length - 1 ? "この巡目の結果へ" : "次の発表へ";
+  nextAnnouncementButton.disabled = false;
+}
+
+function renderRoundSummaryScreen() {
+  showRoundSummaryScreen();
+  roundSummaryList.innerHTML = "";
+
+  if (announcementQueueData.length === 0) {
+    roundSummaryTitle.textContent = "指名結果はありません";
+
+    const emptySummaryItem = document.createElement("li");
+    const emptyText = document.createElement("span");
+
+    emptyText.className = "summary-player";
+    emptyText.textContent = "この巡目の指名結果はありません";
+    emptySummaryItem.appendChild(emptyText);
+    roundSummaryList.appendChild(emptySummaryItem);
+    return;
+  }
+
+  const firstAnnouncement = announcementQueueData[0];
+  roundSummaryTitle.textContent = `第${firstAnnouncement.round}巡目`;
+
+  announcementQueueData.forEach((announcementItem) => {
+    const listItem = document.createElement("li");
+    const teamText = document.createElement("span");
+    const playerText = document.createElement("span");
+
+    teamText.className = "summary-team";
+    teamText.textContent = announcementItem.teamName;
+
+    playerText.className = "summary-player";
+    playerText.textContent = announcementItem.playerName;
+
+    listItem.appendChild(teamText);
+    listItem.appendChild(playerText);
+    roundSummaryList.appendChild(listItem);
+  });
+}
+
 function renderPlayerHistory() {
   const teamNames = [];
 
@@ -555,6 +721,8 @@ function applyRoomData(roomData) {
   const history = normalizeHistory(roomData.history);
   const participants = normalizeParticipants(roomData.participants);
   const pendingPicks = normalizePendingPicks(roomData.pendingPicks);
+  const announcementQueue = normalizeAnnouncementQueue(roomData.announcementQueue);
+  const announcementIndex = Number(roomData.currentAnnouncementIndex);
   const phase = typeof roomData.phase === "string" ? roomData.phase : "drafting";
   const latestHistory = history[history.length - 1];
   const nextMyRound = getNextRoundForTeam(history, currentTeamName);
@@ -569,11 +737,12 @@ function applyRoomData(roomData) {
   draftHistoryData = history;
   participantsData = participants;
   pendingPicksData = pendingPicks;
+  announcementQueueData = announcementQueue;
+  currentAnnouncementIndex = Number.isInteger(announcementIndex) && announcementIndex >= 0 ? announcementIndex : 0;
   currentPhase = phase;
   draftCount = nextMyRound - 1;
   renderDraftHistory();
   renderParticipants();
-  renderWaitingScreen();
 
   if (latestHistory) {
     roundText.textContent = `第${latestHistory.roundNumber}巡選択希望選手`;
@@ -587,6 +756,14 @@ function applyRoomData(roomData) {
 
   if (shouldAnimate) {
     playAnnouncementAnimation();
+  }
+
+  if (phase === "announcing") {
+    renderAnnouncementScreen();
+  } else if (phase === "roundSummary") {
+    renderRoundSummaryScreen();
+  } else {
+    renderWaitingScreen();
   }
 
   hasRenderedRoomSnapshot = true;
@@ -659,12 +836,29 @@ async function joinRoom() {
         const roomData = roomSnapshot.data();
         const nextParticipants = addOrUpdateParticipant(roomData.participants, currentTeamName, now);
         const nextPendingPicks = normalizePendingPicks(roomData.pendingPicks);
+        const nextAnnouncementQueue = normalizeAnnouncementQueue(roomData.announcementQueue);
+        const storedAnnouncementIndex = Number(roomData.currentAnnouncementIndex);
+        const nextAnnouncementIndex =
+          Number.isInteger(storedAnnouncementIndex) && storedAnnouncementIndex >= 0 ? storedAnnouncementIndex : 0;
+        const roomPhase = typeof roomData.phase === "string" ? roomData.phase : "drafting";
         const nextStatus = getSubmissionStatus(nextParticipants, nextPendingPicks);
+        const nextPhase =
+          roomPhase === "announcing" || roomPhase === "roundSummary"
+            ? roomPhase
+            : nextStatus.allSubmitted
+              ? "readyToAnnounce"
+              : nextPendingPicks[currentTeamName]
+                ? "waiting"
+                : "drafting";
 
         transaction.update(currentRoomRef, {
           participants: nextParticipants,
           pendingPicks: nextPendingPicks,
-          phase: nextStatus.allSubmitted ? "readyToAnnounce" : nextPendingPicks[currentTeamName] ? "waiting" : "drafting",
+          announcementQueue: nextAnnouncementQueue.map((announcementItem) => {
+            return toFirestoreAnnouncementItem(announcementItem);
+          }),
+          currentAnnouncementIndex: nextAnnouncementIndex,
+          phase: nextPhase,
           updatedAt: now,
         });
       } else {
@@ -716,6 +910,8 @@ async function resetDraftHistory() {
         transaction.update(currentRoomRef, {
           history: [],
           pendingPicks: {},
+          announcementQueue: [],
+          currentAnnouncementIndex: 0,
           currentRound: 1,
           currentPlayerName: "",
           phase: "drafting",
@@ -815,17 +1011,193 @@ async function announcePlayer() {
   }
 }
 
+function getHistoryIdentity(historyItem) {
+  if (historyItem.roundKey) {
+    return `${historyItem.roundKey}:${historyItem.teamName}`;
+  }
+
+  return `${historyItem.roundNumber}:${historyItem.teamName}:${historyItem.playerName}`;
+}
+
+async function startAnnouncement() {
+  if (currentRoomId === "" || currentRoomRef === null) {
+    message.textContent = "先にルームへ入室してください";
+    return;
+  }
+
+  announceReadyButton.disabled = true;
+  announcementPlaceholder.classList.add("is-hidden");
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+
+      if (!roomSnapshot.exists()) {
+        throw new Error("ルーム情報が見つかりません");
+      }
+
+      const now = getNowISOString();
+      const roomData = roomSnapshot.data();
+      const participants = normalizeParticipants(roomData.participants);
+      const pendingPicks = normalizePendingPicks(roomData.pendingPicks);
+      const status = getSubmissionStatus(participants, pendingPicks);
+
+      if (!status.allSubmitted) {
+        throw new Error("まだ全員の指名が完了していません");
+      }
+
+      const roundKey = `${currentRoomId}-${now}`;
+      const announcementQueue = buildAnnouncementQueue(participants, pendingPicks, roundKey);
+
+      transaction.update(currentRoomRef, {
+        announcementQueue: announcementQueue.map((announcementItem) => {
+          return toFirestoreAnnouncementItem(announcementItem);
+        }),
+        currentAnnouncementIndex: 0,
+        phase: "announcing",
+        updatedAt: now,
+      });
+    });
+  } catch (error) {
+    console.error("発表開始に失敗しました", error);
+    announcementPlaceholder.textContent =
+      error.message === "まだ全員の指名が完了していません"
+        ? "まだ全員の指名が完了していません"
+        : "発表を開始できませんでした。もう一度お試しください。";
+    announcementPlaceholder.classList.remove("is-hidden");
+  } finally {
+    announceReadyButton.disabled = false;
+  }
+}
+
+async function showNextAnnouncement() {
+  if (currentRoomId === "" || currentRoomRef === null) {
+    message.textContent = "先にルームへ入室してください";
+    return;
+  }
+
+  nextAnnouncementButton.disabled = true;
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+
+      if (!roomSnapshot.exists()) {
+        throw new Error("ルーム情報が見つかりません");
+      }
+
+      const now = getNowISOString();
+      const roomData = roomSnapshot.data();
+      const announcementQueue = normalizeAnnouncementQueue(roomData.announcementQueue);
+      const storedAnnouncementIndex = Number(roomData.currentAnnouncementIndex);
+      const safeAnnouncementIndex =
+        Number.isInteger(storedAnnouncementIndex) && storedAnnouncementIndex >= 0 ? storedAnnouncementIndex : 0;
+
+      if (announcementQueue.length === 0) {
+        transaction.update(currentRoomRef, {
+          phase: "roundSummary",
+          updatedAt: now,
+        });
+        return;
+      }
+
+      if (safeAnnouncementIndex < announcementQueue.length - 1) {
+        transaction.update(currentRoomRef, {
+          currentAnnouncementIndex: safeAnnouncementIndex + 1,
+          updatedAt: now,
+        });
+        return;
+      }
+
+      const latestHistory = normalizeHistory(roomData.history);
+      const historyIdentities = new Set(latestHistory.map((historyItem) => getHistoryIdentity(historyItem)));
+      const announcedHistoryItems = announcementQueue
+        .map((announcementItem) => {
+          return {
+            roundNumber: announcementItem.round,
+            teamName: announcementItem.teamName,
+            playerName: announcementItem.playerName,
+            createdAt: now,
+            roundKey: announcementItem.roundKey,
+          };
+        })
+        .filter((historyItem) => {
+          const identity = getHistoryIdentity(historyItem);
+
+          if (historyIdentities.has(identity)) {
+            return false;
+          }
+
+          historyIdentities.add(identity);
+          return true;
+        });
+      const nextHistory = latestHistory.concat(announcedHistoryItems);
+
+      transaction.update(currentRoomRef, {
+        history: nextHistory.map((historyItem) => {
+          return toFirestoreHistoryItem(historyItem);
+        }),
+        currentAnnouncementIndex: announcementQueue.length - 1,
+        currentRound: announcementQueue[0].round,
+        currentTeamName: announcementQueue[announcementQueue.length - 1].teamName,
+        currentPlayerName: announcementQueue[announcementQueue.length - 1].playerName,
+        phase: "roundSummary",
+        updatedAt: now,
+      });
+    });
+  } catch (error) {
+    console.error("次の発表への切り替えに失敗しました", error);
+    message.textContent = "次の発表へ進めませんでした。もう一度お試しください。";
+  } finally {
+    nextAnnouncementButton.disabled = false;
+  }
+}
+
+async function goToNextRound() {
+  if (currentRoomId === "" || currentRoomRef === null) {
+    message.textContent = "先にルームへ入室してください";
+    return;
+  }
+
+  nextRoundButton.disabled = true;
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+      const now = getNowISOString();
+
+      if (roomSnapshot.exists()) {
+        transaction.update(currentRoomRef, {
+          pendingPicks: {},
+          announcementQueue: [],
+          currentAnnouncementIndex: 0,
+          currentPlayerName: "",
+          phase: "drafting",
+          updatedAt: now,
+        });
+      } else {
+        transaction.set(currentRoomRef, createInitialRoomData(currentRoomId, currentTeamName));
+      }
+    });
+  } catch (error) {
+    console.error("次の巡目への切り替えに失敗しました", error);
+    message.textContent = "次の巡目へ進めませんでした。もう一度お試しください。";
+  } finally {
+    nextRoundButton.disabled = false;
+  }
+}
+
 joinRoomButton.addEventListener("click", joinRoom);
 
 announceButton.addEventListener("click", announcePlayer);
 
 resetButton.addEventListener("click", resetDraftHistory);
 
-announceReadyButton.addEventListener("click", () => {
-  announcementPlaceholder.textContent = "発表画面は次の段階で実装します。";
-  announcementPlaceholder.classList.remove("is-hidden");
-  console.log("発表画面は次の段階で実装します。");
-});
+announceReadyButton.addEventListener("click", startAnnouncement);
+
+nextAnnouncementButton.addEventListener("click", showNextAnnouncement);
+
+nextRoundButton.addEventListener("click", goToNextRound);
 
 // ルームIDの入力欄でもEnterキーで入室できるようにします
 roomIdInput.addEventListener("keydown", (event) => {
