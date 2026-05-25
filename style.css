@@ -267,10 +267,27 @@ button:disabled:hover {
   font-weight: bold;
 }
 
+.announcement-card {
+  margin: 0 auto 24px;
+  padding: 22px 16px 18px;
+  border: 1px solid rgba(23, 78, 166, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.9), rgba(226, 240, 255, 0.72)),
+    #ffffff;
+  box-shadow: 0 14px 28px rgba(23, 78, 166, 0.14);
+  opacity: 0;
+  transform: translateY(18px) scale(0.98);
+}
+
+.announcement-card.is-revealed {
+  animation: announcementFadeIn 0.8s ease-out forwards;
+}
+
 .announcing-player-name {
-  margin: 18px 0 24px;
+  margin: 22px 0 0;
   color: #c62828;
-  font-size: clamp(42px, 10vw, 88px);
+  font-size: clamp(48px, 11vw, 96px);
   font-weight: bold;
   line-height: 1.15;
   word-break: keep-all;
@@ -555,6 +572,26 @@ button:disabled:hover {
 
   100% {
     transform: scale(1);
+  }
+}
+
+@keyframes announcementFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+    box-shadow: 0 8px 18px rgba(23, 78, 166, 0.08);
+  }
+
+  70% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: 0 18px 34px rgba(198, 40, 40, 0.18);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow: 0 14px 28px rgba(23, 78, 166, 0.14);
   }
 }
 

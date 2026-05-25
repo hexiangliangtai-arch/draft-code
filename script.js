@@ -42,6 +42,7 @@ const remainingParticipantsList = document.querySelector("#remainingParticipants
 const announceReadyButton = document.querySelector("#announceReadyButton");
 const announcementPlaceholder = document.querySelector("#announcementPlaceholder");
 const announcementScreen = document.querySelector("#announcementScreen");
+const announcementCard = document.querySelector("#announcementCard");
 const announcementProgressText = document.querySelector("#announcementProgressText");
 const announcementRoundText = document.querySelector("#announcementRoundText");
 const announcingTeamName = document.querySelector("#announcingTeamName");
@@ -85,6 +86,7 @@ let currentAnnouncementIndex = 0;
 let currentPhase = "drafting";
 let hasRenderedRoomSnapshot = false;
 let lastRoomAnnouncementSignature = "";
+let lastRevealedAnnouncementSignature = "";
 
 function isFirebaseConfigReady() {
   return (
@@ -606,6 +608,10 @@ function renderAnnouncementScreen() {
   nextAnnouncementButton.textContent =
     safeIndex >= announcementQueueData.length - 1 ? "この巡目の結果へ" : "次の発表へ";
   nextAnnouncementButton.disabled = false;
+
+  playAnnouncementRevealAnimation(
+    `${currentRoomId}:${safeIndex}:${currentAnnouncement.round}:${currentAnnouncement.teamName}:${currentAnnouncement.playerName}`
+  );
 }
 
 function renderRoundSummaryScreen() {
@@ -717,6 +723,21 @@ function playAnnouncementAnimation() {
   }, 10);
 }
 
+function playAnnouncementRevealAnimation(announcementSignature) {
+  if (announcementSignature === "" || announcementSignature === lastRevealedAnnouncementSignature) {
+    return;
+  }
+
+  lastRevealedAnnouncementSignature = announcementSignature;
+  announcementCard.classList.remove("is-revealed");
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      announcementCard.classList.add("is-revealed");
+    });
+  });
+}
+
 function applyRoomData(roomData) {
   const history = normalizeHistory(roomData.history);
   const participants = normalizeParticipants(roomData.participants);
@@ -761,8 +782,10 @@ function applyRoomData(roomData) {
   if (phase === "announcing") {
     renderAnnouncementScreen();
   } else if (phase === "roundSummary") {
+    lastRevealedAnnouncementSignature = "";
     renderRoundSummaryScreen();
   } else {
+    lastRevealedAnnouncementSignature = "";
     renderWaitingScreen();
   }
 
