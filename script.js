@@ -29,10 +29,18 @@ const currentRoomLabel = document.querySelector("#currentRoomLabel");
 const teamNameInput = document.querySelector("#teamNameInput");
 const currentTeamLabel = document.querySelector("#currentTeamLabel");
 const nextRoundLabel = document.querySelector("#nextRoundLabel");
+const draftInputScreen = document.querySelector("#draftInputScreen");
+const draftWaitingScreen = document.querySelector("#draftWaitingScreen");
 const playerNameInput = document.querySelector("#playerName");
 const announceButton = document.querySelector("#announceButton");
 const startMessage = document.querySelector("#startMessage");
 const message = document.querySelector("#message");
+const waitingTitle = document.querySelector("#waitingTitle");
+const waitingMessage = document.querySelector("#waitingMessage");
+const remainingCountText = document.querySelector("#remainingCountText");
+const remainingParticipantsList = document.querySelector("#remainingParticipantsList");
+const announceReadyButton = document.querySelector("#announceReadyButton");
+const announcementPlaceholder = document.querySelector("#announcementPlaceholder");
 const announcement = document.querySelector("#announcement");
 const roundText = document.querySelector("#roundText");
 const announcementTeamName = document.querySelector("#announcementTeamName");
@@ -61,6 +69,8 @@ let currentTeamName = "";
 let draftCount = 0;
 let draftHistoryData = [];
 let participantsData = [];
+let pendingPicksData = {};
+let currentPhase = "drafting";
 let hasRenderedRoomSnapshot = false;
 let lastRoomAnnouncementSignature = "";
 
@@ -152,6 +162,75 @@ function addOrUpdateParticipant(participants, teamName, now) {
   });
 }
 
+function normalizePendingPick(pendingPick) {
+  if (pendingPick === null || typeof pendingPick !== "object") {
+    return null;
+  }
+
+  const roundNumber = Number(pendingPick.round ?? pendingPick.roundNumber);
+
+  if (
+    typeof pendingPick.teamName !== "string" ||
+    typeof pendingPick.playerName !== "string" ||
+    !Number.isInteger(roundNumber) ||
+    roundNumber < 1
+  ) {
+    return null;
+  }
+
+  return {
+    teamName: pendingPick.teamName,
+    playerName: pendingPick.playerName,
+    round: roundNumber,
+    submittedAt: typeof pendingPick.submittedAt === "string" ? pendingPick.submittedAt : "",
+  };
+}
+
+function normalizePendingPicks(pendingPicks) {
+  const normalizedPendingPicks = {};
+
+  if (pendingPicks === null || typeof pendingPicks !== "object" || Array.isArray(pendingPicks)) {
+    return normalizedPendingPicks;
+  }
+
+  Object.keys(pendingPicks).forEach((teamName) => {
+    const normalizedPendingPick = normalizePendingPick(pendingPicks[teamName]);
+
+    if (normalizedPendingPick !== null) {
+      normalizedPendingPicks[teamName] = normalizedPendingPick;
+    }
+  });
+
+  return normalizedPendingPicks;
+}
+
+function getSubmissionStatus(participants, pendingPicks) {
+  const remainingParticipants = participants.filter((participant) => {
+    return pendingPicks[participant.teamName] === undefined;
+  });
+  const allSubmitted = participants.length > 0 && remainingParticipants.length === 0;
+
+  return {
+    allSubmitted: allSubmitted,
+    remainingParticipants: remainingParticipants,
+    remainingCount: remainingParticipants.length,
+  };
+}
+
+function hasCurrentPlayerSubmitted() {
+  return currentTeamName !== "" && pendingPicksData[currentTeamName] !== undefined;
+}
+
+function showDraftInputScreen() {
+  draftInputScreen.classList.remove("is-hidden");
+  draftWaitingScreen.classList.add("is-hidden");
+}
+
+function showDraftWaitingScreen() {
+  draftInputScreen.classList.add("is-hidden");
+  draftWaitingScreen.classList.remove("is-hidden");
+}
+
 function normalizeHistoryItem(historyItem) {
   if (historyItem === null || typeof historyItem !== "object") {
     return null;
@@ -222,6 +301,8 @@ function createInitialRoomData(roomId, participantTeamName = "") {
     currentPlayerName: "",
     history: [],
     participants: participantTeamName !== "" ? addOrUpdateParticipant([], participantTeamName, now) : [],
+    pendingPicks: {},
+    phase: "drafting",
     createdAt: now,
     updatedAt: now,
   };
@@ -342,16 +423,60 @@ function renderParticipants() {
 
   participantsData.forEach((participant) => {
     const listItem = document.createElement("li");
+    const statusText = document.createElement("span");
+    const hasSubmitted = pendingPicksData[participant.teamName] !== undefined;
+    const participantLabel = participant.teamName === currentTeamName
+      ? `${participant.teamName}（自分）`
+      : participant.teamName;
 
     if (participant.teamName === currentTeamName) {
       listItem.className = "is-current";
-      listItem.textContent = `${participant.teamName}（自分）`;
-    } else {
-      listItem.textContent = participant.teamName;
     }
 
+    statusText.className = hasSubmitted ? "participant-status" : "participant-status is-waiting";
+    statusText.textContent = hasSubmitted ? "指名済み" : "未指名";
+
+    listItem.textContent = participantLabel;
+    listItem.appendChild(statusText);
     participantsList.appendChild(listItem);
   });
+}
+
+function renderWaitingScreen() {
+  const status = getSubmissionStatus(participantsData, pendingPicksData);
+  const submitted = hasCurrentPlayerSubmitted();
+
+  if (!submitted) {
+    showDraftInputScreen();
+    announcementPlaceholder.classList.add("is-hidden");
+    return;
+  }
+
+  showDraftWaitingScreen();
+  remainingParticipantsList.innerHTML = "";
+
+  if (status.allSubmitted) {
+    waitingTitle.textContent = "全員の指名が完了しました";
+    waitingMessage.textContent = "発表の準備ができました。発表前のため、履歴にはまだ追加されません。";
+    remainingCountText.textContent = "あと0人";
+    announceReadyButton.classList.remove("is-hidden");
+
+    const completeItem = document.createElement("li");
+    completeItem.textContent = "未指名の参加者はいません";
+    remainingParticipantsList.appendChild(completeItem);
+  } else {
+    waitingTitle.textContent = "他の参加者の指名を待っています";
+    waitingMessage.textContent = "発表前のため、履歴にはまだ追加されません。";
+    remainingCountText.textContent = `あと${status.remainingCount}人`;
+    announceReadyButton.classList.add("is-hidden");
+    announcementPlaceholder.classList.add("is-hidden");
+
+    status.remainingParticipants.forEach((participant) => {
+      const listItem = document.createElement("li");
+      listItem.textContent = participant.teamName;
+      remainingParticipantsList.appendChild(listItem);
+    });
+  }
 }
 
 function renderPlayerHistory() {
@@ -429,6 +554,8 @@ function playAnnouncementAnimation() {
 function applyRoomData(roomData) {
   const history = normalizeHistory(roomData.history);
   const participants = normalizeParticipants(roomData.participants);
+  const pendingPicks = normalizePendingPicks(roomData.pendingPicks);
+  const phase = typeof roomData.phase === "string" ? roomData.phase : "drafting";
   const latestHistory = history[history.length - 1];
   const nextMyRound = getNextRoundForTeam(history, currentTeamName);
   const nextSignature = latestHistory
@@ -441,9 +568,12 @@ function applyRoomData(roomData) {
 
   draftHistoryData = history;
   participantsData = participants;
+  pendingPicksData = pendingPicks;
+  currentPhase = phase;
   draftCount = nextMyRound - 1;
   renderDraftHistory();
   renderParticipants();
+  renderWaitingScreen();
 
   if (latestHistory) {
     roundText.textContent = `第${latestHistory.roundNumber}巡選択希望選手`;
@@ -528,9 +658,13 @@ async function joinRoom() {
       if (roomSnapshot.exists()) {
         const roomData = roomSnapshot.data();
         const nextParticipants = addOrUpdateParticipant(roomData.participants, currentTeamName, now);
+        const nextPendingPicks = normalizePendingPicks(roomData.pendingPicks);
+        const nextStatus = getSubmissionStatus(nextParticipants, nextPendingPicks);
 
         transaction.update(currentRoomRef, {
           participants: nextParticipants,
+          pendingPicks: nextPendingPicks,
+          phase: nextStatus.allSubmitted ? "readyToAnnounce" : nextPendingPicks[currentTeamName] ? "waiting" : "drafting",
           updatedAt: now,
         });
       } else {
@@ -581,8 +715,10 @@ async function resetDraftHistory() {
       if (roomSnapshot.exists()) {
         transaction.update(currentRoomRef, {
           history: [],
+          pendingPicks: {},
           currentRound: 1,
           currentPlayerName: "",
+          phase: "drafting",
           updatedAt: now,
         });
       } else {
@@ -617,7 +753,7 @@ async function announcePlayer() {
 
   // 名前が空のときは、発表せずにメッセージを表示します
   if (playerName === "") {
-    message.textContent = "名前を入力してください";
+    message.textContent = "選手名を入力してください";
     return;
   }
 
@@ -628,27 +764,33 @@ async function announcePlayer() {
     await runTransaction(db, async (transaction) => {
       const roomSnapshot = await transaction.get(currentRoomRef);
       const now = getNowISOString();
-      const roomData = roomSnapshot.exists() ? roomSnapshot.data() : createInitialRoomData(currentRoomId);
+      const roomData = roomSnapshot.exists() ? roomSnapshot.data() : createInitialRoomData(currentRoomId, currentTeamName);
       const latestHistory = normalizeHistory(roomData.history);
       const myHistory = latestHistory.filter((historyItem) => {
         return historyItem.teamName === currentTeamName;
       });
       const nextRound = myHistory.length + 1;
-      const newHistoryItem = {
-        roundNumber: nextRound,
-        teamName: currentTeamName,
-        playerName: playerName,
-        createdAt: now,
+      const nextParticipants = addOrUpdateParticipant(roomData.participants, currentTeamName, now);
+      const nextPendingPicks = {
+        ...normalizePendingPicks(roomData.pendingPicks),
+        [currentTeamName]: {
+          teamName: currentTeamName,
+          playerName: playerName,
+          round: nextRound,
+          submittedAt: now,
+        },
       };
-      const nextHistory = latestHistory.concat(newHistoryItem).map((historyItem) => {
-        return toFirestoreHistoryItem(historyItem);
-      });
+      const nextStatus = getSubmissionStatus(nextParticipants, nextPendingPicks);
       const nextRoomData = {
         roomId: currentRoomId,
-        currentRound: nextRound + 1,
+        currentRound: nextRound,
         currentTeamName: currentTeamName,
-        currentPlayerName: playerName,
-        history: nextHistory,
+        history: latestHistory.map((historyItem) => {
+          return toFirestoreHistoryItem(historyItem);
+        }),
+        participants: nextParticipants,
+        pendingPicks: nextPendingPicks,
+        phase: nextStatus.allSubmitted ? "readyToAnnounce" : "waiting",
         updatedAt: now,
       };
 
@@ -657,13 +799,14 @@ async function announcePlayer() {
       } else {
         transaction.set(currentRoomRef, {
           ...nextRoomData,
-          participants: addOrUpdateParticipant(roomData.participants, currentTeamName, now),
+          currentPlayerName: "",
           createdAt: now,
         });
       }
     });
 
     playerNameInput.value = "";
+    showDraftWaitingScreen();
   } catch (error) {
     console.error("Firebaseへの指名結果の保存に失敗しました", error);
     message.textContent = "Firebaseへの保存に失敗しました。時間をおいてもう一度お試しください。";
@@ -677,6 +820,12 @@ joinRoomButton.addEventListener("click", joinRoom);
 announceButton.addEventListener("click", announcePlayer);
 
 resetButton.addEventListener("click", resetDraftHistory);
+
+announceReadyButton.addEventListener("click", () => {
+  announcementPlaceholder.textContent = "発表画面は次の段階で実装します。";
+  announcementPlaceholder.classList.remove("is-hidden");
+  console.log("発表画面は次の段階で実装します。");
+});
 
 // ルームIDの入力欄でもEnterキーで入室できるようにします
 roomIdInput.addEventListener("keydown", (event) => {
