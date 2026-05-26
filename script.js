@@ -23,6 +23,7 @@ const INITIAL_PLAYER_TEXT = "ここに名前が表示されます";
 // HTMLの部品をJavaScriptで使えるように取得します
 const startScreen = document.querySelector("#startScreen");
 const draftScreen = document.querySelector("#draftScreen");
+const normalScreen = document.querySelector("#normalScreen");
 const roomIdInput = document.querySelector("#roomIdInput");
 const joinRoomButton = document.querySelector("#joinRoomButton");
 const currentRoomLabel = document.querySelector("#currentRoomLabel");
@@ -304,28 +305,37 @@ function hideRoomPhaseScreens() {
   roundSummaryScreen.classList.add("is-hidden");
 }
 
+function showNormalScreen() {
+  normalScreen.classList.remove("is-hidden");
+  announcementScreen.classList.add("is-hidden");
+  roundSummaryScreen.classList.add("is-hidden");
+}
+
 function showDraftInputScreen() {
   hideRoomPhaseScreens();
+  showNormalScreen();
   draftInputScreen.classList.remove("is-hidden");
   announcement.classList.remove("is-hidden");
 }
 
 function showDraftWaitingScreen() {
   hideRoomPhaseScreens();
-  draftInputScreen.classList.add("is-hidden");
+  showNormalScreen();
   draftWaitingScreen.classList.remove("is-hidden");
   announcement.classList.remove("is-hidden");
 }
 
 function showAnnouncementScreen() {
   hideRoomPhaseScreens();
-  announcement.classList.add("is-hidden");
+  normalScreen.classList.add("is-hidden");
+  roundSummaryScreen.classList.add("is-hidden");
   announcementScreen.classList.remove("is-hidden");
 }
 
 function showRoundSummaryScreen() {
   hideRoomPhaseScreens();
-  announcement.classList.add("is-hidden");
+  normalScreen.classList.add("is-hidden");
+  announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.remove("is-hidden");
 }
 

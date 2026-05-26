@@ -32,91 +32,93 @@
       <p class="event-label">2026 DRAFT MEETING</p>
       <h1 id="pageTitle">名前発表ツール</h1>
 
-      <div class="current-status">
-        <p id="currentRoomLabel" class="current-room">現在のルーム：未入室</p>
-        <p id="currentTeamLabel" class="current-team">現在のチーム：未設定</p>
-        <p id="nextRoundLabel" class="next-round-label">次のあなたの指名：第1巡目</p>
-      </div>
-
-      <div class="draft-layout">
-        <div class="draft-main-panel">
-          <div id="draftInputScreen" class="draft-input-screen">
-            <div class="input-area">
-              <label for="playerName">指名したい名前</label>
-              <div class="input-row">
-                <input type="text" id="playerName" placeholder="例：山田 太郎">
-                <button id="announceButton" type="button">指名を確定する</button>
-              </div>
-              <p id="message" class="message" aria-live="polite"></p>
-            </div>
-          </div>
-
-          <div id="draftWaitingScreen" class="draft-waiting-screen is-hidden">
-            <p class="waiting-label">指名を受け付けました</p>
-            <h2 id="waitingTitle">他の参加者の指名を待っています</h2>
-            <p id="waitingMessage" class="waiting-message">発表前のため、履歴にはまだ追加されません。</p>
-            <p id="remainingCountText" class="remaining-count">あと0人</p>
-
-            <div class="waiting-status-area">
-              <h3>未指名</h3>
-              <ul id="remainingParticipantsList" class="waiting-list"></ul>
-            </div>
-
-            <button id="announceReadyButton" class="announce-ready-button is-hidden" type="button">発表する</button>
-            <p id="announcementPlaceholder" class="announcement-placeholder is-hidden" aria-live="polite"></p>
-          </div>
-
-          <div id="announcementScreen" class="announcement-screen is-hidden">
-            <p class="announcement-label">ドラフト発表</p>
-            <p id="announcementProgressText" class="announcement-progress">1人目 / 1人</p>
-            <div id="announcementCard" class="announcement-card">
-              <p id="announcementRoundText" class="round-text">第1巡目</p>
-              <p id="announcingTeamName" class="team-text">チーム名</p>
-              <p id="announcingPlayerName" class="announcing-player-name">選手名</p>
-            </div>
-            <button id="nextAnnouncementButton" type="button">次の発表へ</button>
-          </div>
-
-          <div id="roundSummaryScreen" class="round-summary-screen is-hidden">
-            <p class="summary-label">この巡目の指名結果</p>
-            <h2 id="roundSummaryTitle">第1巡目</h2>
-            <ol id="roundSummaryList" class="round-summary-list"></ol>
-            <button id="nextRoundButton" type="button">次の巡目へ</button>
-          </div>
-
-          <div id="announcement" class="announcement">
-            <p id="roundText" class="round-text">第1巡選択希望選手</p>
-            <p id="announcementTeamName" class="team-text">チーム名を設定してください</p>
-            <p id="announcedName" class="announced-name">ここに名前が表示されます</p>
-          </div>
+      <div id="normalScreen" class="normal-screen">
+        <div class="current-status">
+          <p id="currentRoomLabel" class="current-room">現在のルーム：未入室</p>
+          <p id="currentTeamLabel" class="current-team">現在のチーム：未設定</p>
+          <p id="nextRoundLabel" class="next-round-label">次のあなたの指名：第1巡目</p>
         </div>
 
-        <aside class="draft-history-panel">
-          <section class="participants-area" aria-labelledby="participantsTitle">
-            <h2 id="participantsTitle">参加者一覧</h2>
-            <ul id="participantsList" class="participants-list"></ul>
-          </section>
-
-          <section class="history-area" aria-labelledby="historyTitle">
-            <div class="history-header">
-              <h2 id="historyTitle">ドラフト履歴</h2>
-              <button id="resetButton" class="reset-button" type="button">履歴をリセット</button>
+        <div class="draft-layout">
+          <div class="draft-main-panel">
+            <div id="draftInputScreen" class="draft-input-screen">
+              <div class="input-area">
+                <label for="playerName">指名したい名前</label>
+                <div class="input-row">
+                  <input type="text" id="playerName" placeholder="例：山田 太郎">
+                  <button id="announceButton" type="button">指名を確定する</button>
+                </div>
+                <p id="message" class="message" aria-live="polite"></p>
+              </div>
             </div>
 
-            <div class="history-tabs" role="tablist" aria-label="履歴表示の切り替え">
-              <button id="overallHistoryTab" class="history-tab is-active" type="button">全体履歴</button>
-              <button id="playerHistoryTab" class="history-tab" type="button">プレイヤー別</button>
+            <div id="draftWaitingScreen" class="draft-waiting-screen is-hidden">
+              <p class="waiting-label">指名を受け付けました</p>
+              <h2 id="waitingTitle">他の参加者の指名を待っています</h2>
+              <p id="waitingMessage" class="waiting-message">発表前のため、履歴にはまだ追加されません。</p>
+              <p id="remainingCountText" class="remaining-count">あと0人</p>
+
+              <div class="waiting-status-area">
+                <h3>未指名</h3>
+                <ul id="remainingParticipantsList" class="waiting-list"></ul>
+              </div>
+
+              <button id="announceReadyButton" class="announce-ready-button is-hidden" type="button">発表する</button>
+              <p id="announcementPlaceholder" class="announcement-placeholder is-hidden" aria-live="polite"></p>
             </div>
 
-            <div id="overallHistoryPanel" class="history-panel">
-              <ol id="draftHistory" class="draft-history"></ol>
+            <div id="announcement" class="announcement">
+              <p id="roundText" class="round-text">第1巡選択希望選手</p>
+              <p id="announcementTeamName" class="team-text">チーム名を設定してください</p>
+              <p id="announcedName" class="announced-name">ここに名前が表示されます</p>
             </div>
+          </div>
 
-            <div id="playerHistoryPanel" class="history-panel is-hidden">
-              <div id="playerHistory" class="player-history"></div>
-            </div>
-          </section>
-        </aside>
+          <aside class="draft-history-panel">
+            <section class="participants-area" aria-labelledby="participantsTitle">
+              <h2 id="participantsTitle">参加者一覧</h2>
+              <ul id="participantsList" class="participants-list"></ul>
+            </section>
+
+            <section class="history-area" aria-labelledby="historyTitle">
+              <div class="history-header">
+                <h2 id="historyTitle">ドラフト履歴</h2>
+                <button id="resetButton" class="reset-button" type="button">履歴をリセット</button>
+              </div>
+
+              <div class="history-tabs" role="tablist" aria-label="履歴表示の切り替え">
+                <button id="overallHistoryTab" class="history-tab is-active" type="button">全体履歴</button>
+                <button id="playerHistoryTab" class="history-tab" type="button">プレイヤー別</button>
+              </div>
+
+              <div id="overallHistoryPanel" class="history-panel">
+                <ol id="draftHistory" class="draft-history"></ol>
+              </div>
+
+              <div id="playerHistoryPanel" class="history-panel is-hidden">
+                <div id="playerHistory" class="player-history"></div>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+
+      <div id="announcementScreen" class="announcement-screen is-hidden">
+        <p class="announcement-label">ドラフト発表</p>
+        <p id="announcementProgressText" class="announcement-progress">1人目 / 1人</p>
+        <div id="announcementCard" class="announcement-card">
+          <p id="announcementRoundText" class="round-text">第1巡目</p>
+          <p id="announcingTeamName" class="team-text">チーム名</p>
+          <p id="announcingPlayerName" class="announcing-player-name">選手名</p>
+        </div>
+        <button id="nextAnnouncementButton" type="button">次の発表へ</button>
+      </div>
+
+      <div id="roundSummaryScreen" class="round-summary-screen is-hidden">
+        <p class="summary-label">この巡目の指名結果</p>
+        <h2 id="roundSummaryTitle">第1巡目</h2>
+        <ol id="roundSummaryList" class="round-summary-list"></ol>
+        <button id="nextRoundButton" type="button">次の巡目へ</button>
       </div>
     </section>
   </main>

@@ -181,7 +181,7 @@ button:disabled:hover {
 .draft-waiting-screen,
 .announcement-screen,
 .round-summary-screen {
-  margin-bottom: 32px;
+  margin: 0 auto 32px;
 }
 
 .draft-waiting-screen,
@@ -192,6 +192,11 @@ button:disabled:hover {
   border-bottom: 6px solid #174ea6;
   background: linear-gradient(180deg, #ffffff, #f3f8ff);
   text-align: center;
+}
+
+.announcement-screen,
+.round-summary-screen {
+  max-width: 760px;
 }
 
 .waiting-label {
