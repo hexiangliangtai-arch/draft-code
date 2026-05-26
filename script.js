@@ -16,13 +16,10 @@ const firebaseConfig = {
   appId: "1:611009764252:web:..."
 };
 
-const INITIAL_ROUND_TEXT = "第1巡選択希望選手";
-const INITIAL_TEAM_TEXT = "チーム名を設定してください";
-const INITIAL_PLAYER_TEXT = "ここに名前が表示されます";
-
 // HTMLの部品をJavaScriptで使えるように取得します
 const startScreen = document.querySelector("#startScreen");
 const draftScreen = document.querySelector("#draftScreen");
+const draftHeader = document.querySelector("#draftHeader");
 const normalScreen = document.querySelector("#normalScreen");
 const roomIdInput = document.querySelector("#roomIdInput");
 const joinRoomButton = document.querySelector("#joinRoomButton");
@@ -53,10 +50,6 @@ const roundSummaryScreen = document.querySelector("#roundSummaryScreen");
 const roundSummaryTitle = document.querySelector("#roundSummaryTitle");
 const roundSummaryList = document.querySelector("#roundSummaryList");
 const nextRoundButton = document.querySelector("#nextRoundButton");
-const announcement = document.querySelector("#announcement");
-const roundText = document.querySelector("#roundText");
-const announcementTeamName = document.querySelector("#announcementTeamName");
-const announcedName = document.querySelector("#announcedName");
 const participantsList = document.querySelector("#participantsList");
 const draftHistory = document.querySelector("#draftHistory");
 const playerHistory = document.querySelector("#playerHistory");
@@ -85,8 +78,6 @@ let pendingPicksData = {};
 let announcementQueueData = [];
 let currentAnnouncementIndex = 0;
 let currentPhase = "drafting";
-let hasRenderedRoomSnapshot = false;
-let lastRoomAnnouncementSignature = "";
 let lastRevealedAnnouncementSignature = "";
 
 function isFirebaseConfigReady() {
@@ -306,6 +297,7 @@ function hideRoomPhaseScreens() {
 }
 
 function showNormalScreen() {
+  draftHeader.classList.remove("is-hidden");
   normalScreen.classList.remove("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
@@ -315,18 +307,17 @@ function showDraftInputScreen() {
   hideRoomPhaseScreens();
   showNormalScreen();
   draftInputScreen.classList.remove("is-hidden");
-  announcement.classList.remove("is-hidden");
 }
 
 function showDraftWaitingScreen() {
   hideRoomPhaseScreens();
   showNormalScreen();
   draftWaitingScreen.classList.remove("is-hidden");
-  announcement.classList.remove("is-hidden");
 }
 
 function showAnnouncementScreen() {
   hideRoomPhaseScreens();
+  draftHeader.classList.add("is-hidden");
   normalScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
   announcementScreen.classList.remove("is-hidden");
@@ -334,6 +325,7 @@ function showAnnouncementScreen() {
 
 function showRoundSummaryScreen() {
   hideRoomPhaseScreens();
+  draftHeader.classList.add("is-hidden");
   normalScreen.classList.add("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.remove("is-hidden");
@@ -469,17 +461,6 @@ function loadDraftData() {
   if (currentTeamName !== "") {
     teamNameInput.value = currentTeamName;
     currentTeamLabel.textContent = `現在のチーム：${currentTeamName}`;
-    announcementTeamName.textContent = currentTeamName;
-  }
-
-  if (draftCount > 0) {
-    roundText.textContent = `第${draftCount}巡選択希望選手`;
-  }
-
-  const latestHistory = draftHistoryData[draftHistoryData.length - 1];
-
-  if (latestHistory) {
-    announcedName.textContent = latestHistory.playerName;
   }
 
   renderDraftHistory();
@@ -725,14 +706,6 @@ function showHistoryView(viewName) {
   playerHistoryTab.classList.toggle("is-active", isPlayerHistory);
 }
 
-function playAnnouncementAnimation() {
-  announcement.classList.remove("is-active");
-
-  setTimeout(() => {
-    announcement.classList.add("is-active");
-  }, 10);
-}
-
 function playAnnouncementRevealAnimation(announcementSignature) {
   if (announcementSignature === "" || announcementSignature === lastRevealedAnnouncementSignature) {
     return;
@@ -755,15 +728,7 @@ function applyRoomData(roomData) {
   const announcementQueue = normalizeAnnouncementQueue(roomData.announcementQueue);
   const announcementIndex = Number(roomData.currentAnnouncementIndex);
   const phase = typeof roomData.phase === "string" ? roomData.phase : "drafting";
-  const latestHistory = history[history.length - 1];
   const nextMyRound = getNextRoundForTeam(history, currentTeamName);
-  const nextSignature = latestHistory
-    ? `${currentRoomId}:${latestHistory.roundNumber}:${latestHistory.teamName}:${latestHistory.playerName}`
-    : `${currentRoomId}:empty`;
-  const shouldAnimate =
-    hasRenderedRoomSnapshot &&
-    latestHistory !== undefined &&
-    nextSignature !== lastRoomAnnouncementSignature;
 
   draftHistoryData = history;
   participantsData = participants;
@@ -775,20 +740,6 @@ function applyRoomData(roomData) {
   renderDraftHistory();
   renderParticipants();
 
-  if (latestHistory) {
-    roundText.textContent = `第${latestHistory.roundNumber}巡選択希望選手`;
-    announcementTeamName.textContent = roomData.currentTeamName || latestHistory.teamName;
-    announcedName.textContent = roomData.currentPlayerName || latestHistory.playerName;
-  } else {
-    roundText.textContent = `第${nextMyRound}巡選択希望選手`;
-    announcementTeamName.textContent = currentTeamName !== "" ? currentTeamName : INITIAL_TEAM_TEXT;
-    announcedName.textContent = INITIAL_PLAYER_TEXT;
-  }
-
-  if (shouldAnimate) {
-    playAnnouncementAnimation();
-  }
-
   if (phase === "announcing") {
     renderAnnouncementScreen();
   } else if (phase === "roundSummary") {
@@ -798,9 +749,6 @@ function applyRoomData(roomData) {
     lastRevealedAnnouncementSignature = "";
     renderWaitingScreen();
   }
-
-  hasRenderedRoomSnapshot = true;
-  lastRoomAnnouncementSignature = nextSignature;
 }
 
 function startRoomListener() {
@@ -808,8 +756,7 @@ function startRoomListener() {
     unsubscribeRoom();
   }
 
-  hasRenderedRoomSnapshot = false;
-  lastRoomAnnouncementSignature = "";
+  lastRevealedAnnouncementSignature = "";
 
   unsubscribeRoom = onSnapshot(
     currentRoomRef,
@@ -901,7 +848,6 @@ async function joinRoom() {
 
     currentRoomLabel.textContent = `現在のルーム：${currentRoomId}`;
     currentTeamLabel.textContent = `現在のチーム：${currentTeamName}`;
-    announcementTeamName.textContent = currentTeamName;
     updateNextRoundLabel();
     message.textContent = "";
     saveLocalSettings();

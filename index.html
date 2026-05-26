@@ -29,18 +29,20 @@
     </section>
 
     <section id="draftScreen" class="draft-board draft-screen is-hidden" aria-labelledby="pageTitle">
-      <p class="event-label">2026 DRAFT MEETING</p>
-      <h1 id="pageTitle">名前発表ツール</h1>
-
       <div id="normalScreen" class="normal-screen">
-        <div class="current-status">
-          <p id="currentRoomLabel" class="current-room">現在のルーム：未入室</p>
-          <p id="currentTeamLabel" class="current-team">現在のチーム：未設定</p>
-          <p id="nextRoundLabel" class="next-round-label">次のあなたの指名：第1巡目</p>
-        </div>
-
         <div class="draft-layout">
           <div class="draft-main-panel">
+            <div id="draftHeader" class="draft-header">
+              <p class="event-label">2026 DRAFT MEETING</p>
+              <h1 id="pageTitle">名前発表ツール</h1>
+            </div>
+
+            <div class="current-status">
+              <p id="currentRoomLabel" class="current-room">現在のルーム：未入室</p>
+              <p id="currentTeamLabel" class="current-team">現在のチーム：未設定</p>
+              <p id="nextRoundLabel" class="next-round-label">次のあなたの指名：第1巡目</p>
+            </div>
+
             <div id="draftInputScreen" class="draft-input-screen">
               <div class="input-area">
                 <label for="playerName">指名したい名前</label>
@@ -65,12 +67,6 @@
 
               <button id="announceReadyButton" class="announce-ready-button is-hidden" type="button">発表する</button>
               <p id="announcementPlaceholder" class="announcement-placeholder is-hidden" aria-live="polite"></p>
-            </div>
-
-            <div id="announcement" class="announcement">
-              <p id="roundText" class="round-text">第1巡選択希望選手</p>
-              <p id="announcementTeamName" class="team-text">チーム名を設定してください</p>
-              <p id="announcedName" class="announced-name">ここに名前が表示されます</p>
             </div>
           </div>
 
