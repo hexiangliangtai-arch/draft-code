@@ -45,6 +45,20 @@ const conflictPickList = document.querySelector("#conflictPickList");
 const conflictSummary = document.querySelector("#conflictSummary");
 const confirmConflictButton = document.querySelector("#confirmConflictButton");
 const conflictSelectionMessage = document.querySelector("#conflictSelectionMessage");
+const lotteryScreen = document.querySelector("#lotteryScreen");
+const lotteryProgressText = document.querySelector("#lotteryProgressText");
+const lotteryGroupLabel = document.querySelector("#lotteryGroupLabel");
+const lotteryPlayerName = document.querySelector("#lotteryPlayerName");
+const lotteryTargetList = document.querySelector("#lotteryTargetList");
+const rouletteDisplay = document.querySelector("#rouletteDisplay");
+const lotteryResultText = document.querySelector("#lotteryResultText");
+const startLotteryButton = document.querySelector("#startLotteryButton");
+const nextLotteryButton = document.querySelector("#nextLotteryButton");
+const lotteryMessage = document.querySelector("#lotteryMessage");
+const lotterySummaryScreen = document.querySelector("#lotterySummaryScreen");
+const lotterySummaryList = document.querySelector("#lotterySummaryList");
+const lotterySummaryMessage = document.querySelector("#lotterySummaryMessage");
+const loserNextStepButton = document.querySelector("#loserNextStepButton");
 const announcementScreen = document.querySelector("#announcementScreen");
 const announcementCard = document.querySelector("#announcementCard");
 const announcementProgressText = document.querySelector("#announcementProgressText");
@@ -82,10 +96,16 @@ let draftHistoryData = [];
 let participantsData = [];
 let pendingPicksData = {};
 let announcementQueueData = [];
+let conflictGroupsData = [];
+let confirmedPicksData = {};
+let lotteryResultsData = [];
 let currentAnnouncementIndex = 0;
+let currentLotteryGroupIndex = 0;
 let currentPhase = "drafting";
 let lastRevealedAnnouncementSignature = "";
 let conflictSelections = {};
+let lotterySpinTimer = null;
+let isLotterySpinning = false;
 
 function isFirebaseConfigReady() {
   return (
@@ -264,6 +284,204 @@ function toFirestoreAnnouncementItem(announcementItem) {
   };
 }
 
+function normalizeConflictPick(conflictPick) {
+  if (conflictPick === null || typeof conflictPick !== "object") {
+    return null;
+  }
+
+  const roundNumber = Number(conflictPick.round ?? conflictPick.roundNumber);
+  const attemptNumber = Number(conflictPick.attempt);
+
+  if (
+    typeof conflictPick.teamName !== "string" ||
+    typeof conflictPick.playerName !== "string" ||
+    !Number.isInteger(roundNumber) ||
+    roundNumber < 1
+  ) {
+    return null;
+  }
+
+  return {
+    teamName: conflictPick.teamName,
+    playerName: conflictPick.playerName,
+    round: roundNumber,
+    attempt: Number.isInteger(attemptNumber) && attemptNumber >= 0 ? attemptNumber : 0,
+  };
+}
+
+function normalizeConflictGroup(conflictGroup) {
+  if (conflictGroup === null || typeof conflictGroup !== "object") {
+    return null;
+  }
+
+  const picks = Array.isArray(conflictGroup.picks)
+    ? conflictGroup.picks
+        .map((conflictPick) => normalizeConflictPick(conflictPick))
+        .filter((conflictPick) => conflictPick !== null)
+    : [];
+  const teams = Array.isArray(conflictGroup.teams)
+    ? conflictGroup.teams.filter((teamName) => typeof teamName === "string" && teamName.trim() !== "")
+    : picks.map((conflictPick) => conflictPick.teamName);
+
+  if (typeof conflictGroup.id !== "string" || teams.length === 0 || picks.length === 0) {
+    return null;
+  }
+
+  return {
+    id: conflictGroup.id,
+    label: typeof conflictGroup.label === "string" ? conflictGroup.label : conflictGroup.id,
+    teams: teams,
+    picks: picks,
+    status: typeof conflictGroup.status === "string" ? conflictGroup.status : "pendingLottery",
+    winner: typeof conflictGroup.winner === "string" ? conflictGroup.winner : null,
+    losers: Array.isArray(conflictGroup.losers)
+      ? conflictGroup.losers.filter((teamName) => typeof teamName === "string")
+      : [],
+  };
+}
+
+function normalizeConflictGroups(conflictGroups) {
+  if (!Array.isArray(conflictGroups)) {
+    return [];
+  }
+
+  return conflictGroups
+    .map((conflictGroup) => normalizeConflictGroup(conflictGroup))
+    .filter((conflictGroup) => conflictGroup !== null);
+}
+
+function toFirestoreConflictGroup(conflictGroup) {
+  return {
+    id: conflictGroup.id,
+    label: conflictGroup.label,
+    teams: conflictGroup.teams,
+    picks: conflictGroup.picks.map((conflictPick) => {
+      return {
+        teamName: conflictPick.teamName,
+        playerName: conflictPick.playerName,
+        round: conflictPick.round,
+        attempt: conflictPick.attempt,
+      };
+    }),
+    status: conflictGroup.status,
+    winner: conflictGroup.winner,
+    losers: conflictGroup.losers,
+  };
+}
+
+function normalizeConfirmedPick(confirmedPick) {
+  if (confirmedPick === null || typeof confirmedPick !== "object") {
+    return null;
+  }
+
+  const roundNumber = Number(confirmedPick.round ?? confirmedPick.roundNumber);
+  const attemptNumber = Number(confirmedPick.attempt);
+
+  if (
+    typeof confirmedPick.teamName !== "string" ||
+    typeof confirmedPick.playerName !== "string" ||
+    !Number.isInteger(roundNumber) ||
+    roundNumber < 1
+  ) {
+    return null;
+  }
+
+  return {
+    teamName: confirmedPick.teamName,
+    playerName: confirmedPick.playerName,
+    round: roundNumber,
+    attempt: Number.isInteger(attemptNumber) && attemptNumber >= 0 ? attemptNumber : 0,
+    decidedBy: typeof confirmedPick.decidedBy === "string" ? confirmedPick.decidedBy : "",
+    lotteryGroupId: typeof confirmedPick.lotteryGroupId === "string" ? confirmedPick.lotteryGroupId : "",
+    confirmedAt: typeof confirmedPick.confirmedAt === "string" ? confirmedPick.confirmedAt : "",
+  };
+}
+
+function normalizeConfirmedPicks(confirmedPicks) {
+  const normalizedConfirmedPicks = {};
+
+  if (confirmedPicks === null || typeof confirmedPicks !== "object" || Array.isArray(confirmedPicks)) {
+    return normalizedConfirmedPicks;
+  }
+
+  Object.keys(confirmedPicks).forEach((teamName) => {
+    const confirmedPick = normalizeConfirmedPick(confirmedPicks[teamName]);
+
+    if (confirmedPick !== null) {
+      normalizedConfirmedPicks[teamName] = confirmedPick;
+    }
+  });
+
+  return normalizedConfirmedPicks;
+}
+
+function toFirestoreConfirmedPicks(confirmedPicks) {
+  const firestoreConfirmedPicks = {};
+
+  Object.keys(confirmedPicks).forEach((teamName) => {
+    const confirmedPick = confirmedPicks[teamName];
+
+    firestoreConfirmedPicks[teamName] = {
+      teamName: confirmedPick.teamName,
+      playerName: confirmedPick.playerName,
+      round: confirmedPick.round,
+      attempt: confirmedPick.attempt,
+      decidedBy: confirmedPick.decidedBy,
+      confirmedAt: confirmedPick.confirmedAt || getNowISOString(),
+    };
+
+    if (confirmedPick.lotteryGroupId) {
+      firestoreConfirmedPicks[teamName].lotteryGroupId = confirmedPick.lotteryGroupId;
+    }
+  });
+
+  return firestoreConfirmedPicks;
+}
+
+function normalizeLotteryResult(lotteryResult) {
+  if (lotteryResult === null || typeof lotteryResult !== "object") {
+    return null;
+  }
+
+  if (
+    typeof lotteryResult.groupId !== "string" ||
+    typeof lotteryResult.winner !== "string" ||
+    !Array.isArray(lotteryResult.losers)
+  ) {
+    return null;
+  }
+
+  return {
+    groupId: lotteryResult.groupId,
+    label: typeof lotteryResult.label === "string" ? lotteryResult.label : lotteryResult.groupId,
+    winner: lotteryResult.winner,
+    losers: lotteryResult.losers.filter((teamName) => typeof teamName === "string"),
+    playerName: typeof lotteryResult.playerName === "string" ? lotteryResult.playerName : "",
+    decidedAt: typeof lotteryResult.decidedAt === "string" ? lotteryResult.decidedAt : "",
+  };
+}
+
+function normalizeLotteryResults(lotteryResults) {
+  if (!Array.isArray(lotteryResults)) {
+    return [];
+  }
+
+  return lotteryResults
+    .map((lotteryResult) => normalizeLotteryResult(lotteryResult))
+    .filter((lotteryResult) => lotteryResult !== null);
+}
+
+function toFirestoreLotteryResult(lotteryResult) {
+  return {
+    groupId: lotteryResult.groupId,
+    label: lotteryResult.label,
+    winner: lotteryResult.winner,
+    losers: lotteryResult.losers,
+    playerName: lotteryResult.playerName,
+    decidedAt: lotteryResult.decidedAt,
+  };
+}
+
 function buildAnnouncementQueue(participants, pendingPicks, roundKey) {
   return participants.map((participant) => {
     const pendingPick = pendingPicks[participant.teamName];
@@ -300,6 +518,8 @@ function hideRoomPhaseScreens() {
   draftInputScreen.classList.add("is-hidden");
   draftWaitingScreen.classList.add("is-hidden");
   conflictSelectionScreen.classList.add("is-hidden");
+  lotteryScreen.classList.add("is-hidden");
+  lotterySummaryScreen.classList.add("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
 }
@@ -308,6 +528,8 @@ function showNormalScreen() {
   draftHeader.classList.remove("is-hidden");
   normalScreen.classList.remove("is-hidden");
   conflictSelectionScreen.classList.add("is-hidden");
+  lotteryScreen.classList.add("is-hidden");
+  lotterySummaryScreen.classList.add("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
 }
@@ -329,6 +551,8 @@ function showAnnouncementScreen() {
   draftHeader.classList.add("is-hidden");
   normalScreen.classList.add("is-hidden");
   conflictSelectionScreen.classList.add("is-hidden");
+  lotteryScreen.classList.add("is-hidden");
+  lotterySummaryScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
   announcementScreen.classList.remove("is-hidden");
 }
@@ -338,6 +562,8 @@ function showRoundSummaryScreen() {
   draftHeader.classList.add("is-hidden");
   normalScreen.classList.add("is-hidden");
   conflictSelectionScreen.classList.add("is-hidden");
+  lotteryScreen.classList.add("is-hidden");
+  lotterySummaryScreen.classList.add("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.remove("is-hidden");
 }
@@ -346,9 +572,33 @@ function showConflictSelectionScreen() {
   hideRoomPhaseScreens();
   draftHeader.classList.add("is-hidden");
   normalScreen.classList.add("is-hidden");
+  lotteryScreen.classList.add("is-hidden");
+  lotterySummaryScreen.classList.add("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
   conflictSelectionScreen.classList.remove("is-hidden");
+}
+
+function showLotteryScreen() {
+  hideRoomPhaseScreens();
+  draftHeader.classList.add("is-hidden");
+  normalScreen.classList.add("is-hidden");
+  conflictSelectionScreen.classList.add("is-hidden");
+  lotterySummaryScreen.classList.add("is-hidden");
+  announcementScreen.classList.add("is-hidden");
+  roundSummaryScreen.classList.add("is-hidden");
+  lotteryScreen.classList.remove("is-hidden");
+}
+
+function showLotterySummaryScreen() {
+  hideRoomPhaseScreens();
+  draftHeader.classList.add("is-hidden");
+  normalScreen.classList.add("is-hidden");
+  conflictSelectionScreen.classList.add("is-hidden");
+  lotteryScreen.classList.add("is-hidden");
+  announcementScreen.classList.add("is-hidden");
+  roundSummaryScreen.classList.add("is-hidden");
+  lotterySummaryScreen.classList.remove("is-hidden");
 }
 
 function normalizeHistoryItem(historyItem) {
@@ -431,8 +681,10 @@ function createInitialRoomData(roomId, participantTeamName = "") {
     pendingPicks: {},
     conflictGroups: [],
     confirmedPicks: {},
+    lotteryResults: [],
     announcementQueue: [],
     currentAnnouncementIndex: 0,
+    currentLotteryGroupIndex: 0,
     phase: "drafting",
     createdAt: now,
     updatedAt: now,
@@ -920,6 +1172,158 @@ function buildConflictSelectionData(participants, pendingPicks, selections, now)
   };
 }
 
+function getConflictGroupPlayerName(conflictGroup) {
+  return conflictGroup.picks[0]?.playerName || "対象選手";
+}
+
+function getSafeLotteryGroupIndex(conflictGroups, lotteryGroupIndex) {
+  if (conflictGroups.length === 0) {
+    return 0;
+  }
+
+  if (!Number.isInteger(lotteryGroupIndex) || lotteryGroupIndex < 0) {
+    return 0;
+  }
+
+  return Math.min(lotteryGroupIndex, conflictGroups.length - 1);
+}
+
+function getNextPendingLotteryGroupIndex(conflictGroups, startIndex) {
+  for (let index = startIndex; index < conflictGroups.length; index += 1) {
+    if (conflictGroups[index].status !== "lotteryDone" || !conflictGroups[index].winner) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function renderLotteryScreen() {
+  showLotteryScreen();
+  lotteryTargetList.innerHTML = "";
+  lotteryMessage.textContent = "";
+
+  if (conflictGroupsData.length === 0) {
+    lotteryProgressText.textContent = "0 / 0 グループ目";
+    lotteryGroupLabel.textContent = "抽選対象はありません";
+    lotteryPlayerName.textContent = "重複指名はありません";
+    rouletteDisplay.textContent = "抽選なし";
+    lotteryResultText.textContent = "";
+    startLotteryButton.disabled = true;
+    nextLotteryButton.classList.remove("is-hidden");
+    nextLotteryButton.textContent = "抽選結果一覧へ";
+    return;
+  }
+
+  const safeIndex = getSafeLotteryGroupIndex(conflictGroupsData, currentLotteryGroupIndex);
+  const conflictGroup = conflictGroupsData[safeIndex];
+  const hasWinner = conflictGroup.status === "lotteryDone" && typeof conflictGroup.winner === "string";
+
+  lotteryProgressText.textContent = `${safeIndex + 1} / ${conflictGroupsData.length} グループ目`;
+  lotteryGroupLabel.textContent = `${conflictGroup.label}の抽選`;
+  lotteryPlayerName.textContent = getConflictGroupPlayerName(conflictGroup);
+
+  conflictGroup.picks.forEach((conflictPick) => {
+    const listItem = document.createElement("li");
+
+    listItem.textContent = `${conflictPick.teamName}　${conflictPick.playerName}`;
+    lotteryTargetList.appendChild(listItem);
+  });
+
+  if (isLotterySpinning) {
+    startLotteryButton.disabled = true;
+    nextLotteryButton.classList.add("is-hidden");
+    return;
+  }
+
+  rouletteDisplay.classList.remove("is-spinning", "is-winner");
+
+  if (hasWinner) {
+    rouletteDisplay.textContent = conflictGroup.winner;
+    rouletteDisplay.classList.add("is-winner");
+    lotteryResultText.textContent = `当選：${conflictGroup.winner}`;
+    startLotteryButton.disabled = true;
+    nextLotteryButton.textContent =
+      getNextPendingLotteryGroupIndex(conflictGroupsData, safeIndex + 1) === -1
+        ? "抽選結果一覧へ"
+        : "次の抽選へ";
+    nextLotteryButton.classList.remove("is-hidden");
+    return;
+  }
+
+  rouletteDisplay.textContent = "抽選待ち";
+  lotteryResultText.textContent = "";
+  startLotteryButton.disabled = false;
+  nextLotteryButton.classList.add("is-hidden");
+}
+
+function renderLotterySummaryScreen() {
+  showLotterySummaryScreen();
+  lotterySummaryList.innerHTML = "";
+  lotterySummaryMessage.textContent = "抽選で外れたプレイヤーは、次の段階で外れ指名へ進みます。";
+
+  const singlePicks = Object.values(confirmedPicksData).filter((confirmedPick) => {
+    return confirmedPick.decidedBy === "single";
+  });
+  const lotteryConfirmedPicks = Object.values(confirmedPicksData).filter((confirmedPick) => {
+    return confirmedPick.decidedBy === "lottery";
+  });
+
+  const singleGroup = document.createElement("section");
+  const singleTitle = document.createElement("h3");
+  const singleList = document.createElement("ul");
+
+  singleGroup.className = "lottery-summary-group";
+  singleTitle.textContent = "単独指名で確定";
+
+  if (singlePicks.length === 0) {
+    const emptyItem = document.createElement("li");
+
+    emptyItem.textContent = "単独指名で確定したプレイヤーはいません";
+    singleList.appendChild(emptyItem);
+  } else {
+    singlePicks.forEach((confirmedPick) => {
+      const listItem = document.createElement("li");
+
+      listItem.textContent = `${confirmedPick.teamName}　${confirmedPick.playerName}`;
+      singleList.appendChild(listItem);
+    });
+  }
+
+  singleGroup.appendChild(singleTitle);
+  singleGroup.appendChild(singleList);
+  lotterySummaryList.appendChild(singleGroup);
+
+  conflictGroupsData.forEach((conflictGroup) => {
+    const group = document.createElement("section");
+    const title = document.createElement("h3");
+    const list = document.createElement("ul");
+    const winnerText = conflictGroup.winner || "未抽選";
+    const losersText = conflictGroup.losers.length > 0 ? conflictGroup.losers.join("、") : "なし";
+
+    group.className = "lottery-summary-group is-conflict";
+    title.textContent = `${conflictGroup.label}　対象：${getConflictGroupPlayerName(conflictGroup)}`;
+
+    [
+      `当選：${winnerText}`,
+      `落選：${losersText}`,
+    ].forEach((text) => {
+      const listItem = document.createElement("li");
+
+      listItem.textContent = text;
+      list.appendChild(listItem);
+    });
+
+    group.appendChild(title);
+    group.appendChild(list);
+    lotterySummaryList.appendChild(group);
+  });
+
+  if (conflictGroupsData.length === 0 && lotteryConfirmedPicks.length === 0) {
+    lotterySummaryMessage.textContent = "重複はありません。全員の指名が確定しました。";
+  }
+}
+
 function renderPlayerHistory() {
   const teamNames = [];
 
@@ -1004,7 +1408,11 @@ function applyRoomData(roomData) {
   const participants = normalizeParticipants(roomData.participants);
   const pendingPicks = normalizePendingPicks(roomData.pendingPicks);
   const announcementQueue = normalizeAnnouncementQueue(roomData.announcementQueue);
+  const conflictGroups = normalizeConflictGroups(roomData.conflictGroups);
+  const confirmedPicks = normalizeConfirmedPicks(roomData.confirmedPicks);
+  const lotteryResults = normalizeLotteryResults(roomData.lotteryResults);
   const announcementIndex = Number(roomData.currentAnnouncementIndex);
+  const lotteryGroupIndex = Number(roomData.currentLotteryGroupIndex);
   const phase = typeof roomData.phase === "string" ? roomData.phase : "drafting";
   const nextMyRound = getNextRoundForTeam(history, currentTeamName);
 
@@ -1012,7 +1420,11 @@ function applyRoomData(roomData) {
   participantsData = participants;
   pendingPicksData = pendingPicks;
   announcementQueueData = announcementQueue;
+  conflictGroupsData = conflictGroups;
+  confirmedPicksData = confirmedPicks;
+  lotteryResultsData = lotteryResults;
   currentAnnouncementIndex = Number.isInteger(announcementIndex) && announcementIndex >= 0 ? announcementIndex : 0;
+  currentLotteryGroupIndex = Number.isInteger(lotteryGroupIndex) && lotteryGroupIndex >= 0 ? lotteryGroupIndex : 0;
   currentPhase = phase;
   draftCount = nextMyRound - 1;
   renderDraftHistory();
@@ -1021,6 +1433,12 @@ function applyRoomData(roomData) {
   if (phase === "conflictSelection") {
     lastRevealedAnnouncementSignature = "";
     renderConflictSelectionScreen();
+  } else if (phase === "lottery") {
+    lastRevealedAnnouncementSignature = "";
+    renderLotteryScreen();
+  } else if (phase === "lotterySummary") {
+    lastRevealedAnnouncementSignature = "";
+    renderLotterySummaryScreen();
   } else if (phase === "announcing") {
     renderAnnouncementScreen();
   } else if (phase === "roundSummary") {
@@ -1103,8 +1521,15 @@ async function joinRoom() {
           Number.isInteger(storedAnnouncementIndex) && storedAnnouncementIndex >= 0 ? storedAnnouncementIndex : 0;
         const roomPhase = typeof roomData.phase === "string" ? roomData.phase : "drafting";
         const nextStatus = getSubmissionStatus(nextParticipants, nextPendingPicks);
+        const preservedRoomPhases = [
+          "conflictSelection",
+          "lottery",
+          "lotterySummary",
+          "announcing",
+          "roundSummary",
+        ];
         const nextPhase =
-          roomPhase === "conflictSelection" || roomPhase === "announcing" || roomPhase === "roundSummary"
+          preservedRoomPhases.includes(roomPhase)
             ? roomPhase
             : nextStatus.allSubmitted
               ? "readyToAnnounce"
@@ -1172,8 +1597,10 @@ async function resetDraftHistory() {
           pendingPicks: {},
           conflictGroups: [],
           confirmedPicks: {},
+          lotteryResults: [],
           announcementQueue: [],
           currentAnnouncementIndex: 0,
+          currentLotteryGroupIndex: 0,
           currentRound: 1,
           currentPlayerName: "",
           phase: "drafting",
@@ -1362,16 +1789,19 @@ async function saveConflictSelection() {
         conflictSelections,
         now
       );
+      const nextPhase = conflictSelectionData.conflictGroups.length > 0 ? "lottery" : "lotterySummary";
 
       transaction.update(currentRoomRef, {
         conflictGroups: conflictSelectionData.conflictGroups,
         confirmedPicks: conflictSelectionData.confirmedPicks,
-        phase: "conflictSelection",
+        lotteryResults: [],
+        currentLotteryGroupIndex: 0,
+        phase: nextPhase,
         updatedAt: now,
       });
     });
 
-    conflictSelectionMessage.textContent = "重複情報を保存しました。次は抽選機能を実装します。";
+    conflictSelectionMessage.textContent = "重複情報を保存しました。";
   } catch (error) {
     console.error("重複情報の保存に失敗しました", error);
     conflictSelectionMessage.textContent =
@@ -1437,6 +1867,217 @@ async function showNextAnnouncement() {
   }
 }
 
+function runRouletteAnimation(teams, winner) {
+  return new Promise((resolve) => {
+    if (lotterySpinTimer !== null) {
+      clearTimeout(lotterySpinTimer);
+      lotterySpinTimer = null;
+    }
+
+    const winnerIndex = Math.max(teams.indexOf(winner), 0);
+    const totalSteps = teams.length * 7 + winnerIndex;
+    let step = 0;
+
+    rouletteDisplay.classList.remove("is-winner");
+    rouletteDisplay.classList.add("is-spinning");
+    lotteryResultText.textContent = "";
+
+    const tick = () => {
+      if (step >= totalSteps) {
+        rouletteDisplay.textContent = winner;
+        rouletteDisplay.classList.remove("is-spinning");
+        rouletteDisplay.classList.add("is-winner");
+        lotteryResultText.textContent = `当選：${winner}`;
+        lotterySpinTimer = null;
+        resolve();
+        return;
+      }
+
+      rouletteDisplay.textContent = teams[step % teams.length];
+      step += 1;
+
+      const delay = Math.min(55 + step * 7, 220);
+      lotterySpinTimer = setTimeout(tick, delay);
+    };
+
+    tick();
+  });
+}
+
+async function saveLotteryResult(groupIndex, winner, losers) {
+  await runTransaction(db, async (transaction) => {
+    const roomSnapshot = await transaction.get(currentRoomRef);
+
+    if (!roomSnapshot.exists()) {
+      throw new Error("ルーム情報が見つかりません");
+    }
+
+    const now = getNowISOString();
+    const roomData = roomSnapshot.data();
+    const conflictGroups = normalizeConflictGroups(roomData.conflictGroups);
+    const confirmedPicks = normalizeConfirmedPicks(roomData.confirmedPicks);
+    const lotteryResults = normalizeLotteryResults(roomData.lotteryResults);
+    const conflictGroup = conflictGroups[groupIndex];
+
+    if (conflictGroup === undefined) {
+      throw new Error("抽選対象の重複グループが見つかりません");
+    }
+
+    if (conflictGroup.status === "lotteryDone" && conflictGroup.winner) {
+      return;
+    }
+
+    const winnerPick = conflictGroup.picks.find((conflictPick) => {
+      return conflictPick.teamName === winner;
+    });
+
+    if (winnerPick === undefined) {
+      throw new Error("当選者の指名データが見つかりません");
+    }
+
+    conflictGroups[groupIndex] = {
+      ...conflictGroup,
+      status: "lotteryDone",
+      winner: winner,
+      losers: losers,
+    };
+
+    const nextLotteryResults = lotteryResults.filter((lotteryResult) => {
+      return lotteryResult.groupId !== conflictGroup.id;
+    });
+
+    nextLotteryResults.push({
+      groupId: conflictGroup.id,
+      label: conflictGroup.label,
+      winner: winner,
+      losers: losers,
+      playerName: winnerPick.playerName,
+      decidedAt: now,
+    });
+
+    confirmedPicks[winner] = {
+      teamName: winner,
+      playerName: winnerPick.playerName,
+      round: winnerPick.round,
+      attempt: winnerPick.attempt,
+      decidedBy: "lottery",
+      lotteryGroupId: conflictGroup.id,
+      confirmedAt: now,
+    };
+
+    transaction.update(currentRoomRef, {
+      conflictGroups: conflictGroups.map((nextConflictGroup) => {
+        return toFirestoreConflictGroup(nextConflictGroup);
+      }),
+      lotteryResults: nextLotteryResults.map((lotteryResult) => {
+        return toFirestoreLotteryResult(lotteryResult);
+      }),
+      confirmedPicks: toFirestoreConfirmedPicks(confirmedPicks),
+      phase: "lottery",
+      updatedAt: now,
+    });
+  });
+}
+
+async function startLottery() {
+  if (currentRoomId === "" || currentRoomRef === null) {
+    lotteryMessage.textContent = "先にルームへ入室してください";
+    return;
+  }
+
+  const safeIndex = getSafeLotteryGroupIndex(conflictGroupsData, currentLotteryGroupIndex);
+  const conflictGroup = conflictGroupsData[safeIndex];
+
+  if (conflictGroup === undefined) {
+    lotteryMessage.textContent = "抽選対象がありません";
+    return;
+  }
+
+  if (conflictGroup.status === "lotteryDone" && conflictGroup.winner) {
+    lotteryMessage.textContent = "このグループは抽選済みです";
+    return;
+  }
+
+  const teams = conflictGroup.teams;
+
+  if (teams.length < 2) {
+    lotteryMessage.textContent = "抽選対象は2人以上必要です";
+    return;
+  }
+
+  const winnerIndex = Math.floor(Math.random() * teams.length);
+  const winner = teams[winnerIndex];
+  const losers = teams.filter((teamName) => {
+    return teamName !== winner;
+  });
+
+  startLotteryButton.disabled = true;
+  nextLotteryButton.classList.add("is-hidden");
+  lotteryMessage.textContent = "";
+  isLotterySpinning = true;
+
+  try {
+    await runRouletteAnimation(teams, winner);
+    await saveLotteryResult(safeIndex, winner, losers);
+  } catch (error) {
+    console.error("抽選結果の保存に失敗しました", error);
+    lotteryMessage.textContent = error.message || "抽選結果を保存できませんでした。もう一度お試しください。";
+  } finally {
+    isLotterySpinning = false;
+    startLotteryButton.disabled = false;
+    if (currentPhase === "lottery") {
+      renderLotteryScreen();
+    }
+  }
+}
+
+async function goToNextLottery() {
+  if (currentRoomId === "" || currentRoomRef === null) {
+    lotteryMessage.textContent = "先にルームへ入室してください";
+    return;
+  }
+
+  nextLotteryButton.disabled = true;
+  lotteryMessage.textContent = "";
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+
+      if (!roomSnapshot.exists()) {
+        throw new Error("ルーム情報が見つかりません");
+      }
+
+      const now = getNowISOString();
+      const roomData = roomSnapshot.data();
+      const conflictGroups = normalizeConflictGroups(roomData.conflictGroups);
+      const storedLotteryGroupIndex = Number(roomData.currentLotteryGroupIndex);
+      const safeIndex = getSafeLotteryGroupIndex(
+        conflictGroups,
+        Number.isInteger(storedLotteryGroupIndex) ? storedLotteryGroupIndex : 0
+      );
+      const currentGroup = conflictGroups[safeIndex];
+
+      if (currentGroup && (currentGroup.status !== "lotteryDone" || !currentGroup.winner)) {
+        throw new Error("現在の重複グループの抽選がまだ終わっていません");
+      }
+
+      const nextIndex = getNextPendingLotteryGroupIndex(conflictGroups, safeIndex + 1);
+
+      transaction.update(currentRoomRef, {
+        currentLotteryGroupIndex: nextIndex === -1 ? safeIndex : nextIndex,
+        phase: nextIndex === -1 ? "lotterySummary" : "lottery",
+        updatedAt: now,
+      });
+    });
+  } catch (error) {
+    console.error("次の抽選への切り替えに失敗しました", error);
+    lotteryMessage.textContent = error.message || "次の抽選へ進めませんでした。もう一度お試しください。";
+  } finally {
+    nextLotteryButton.disabled = false;
+  }
+}
+
 async function goToNextRound() {
   if (currentRoomId === "" || currentRoomRef === null) {
     message.textContent = "先にルームへ入室してください";
@@ -1455,8 +2096,10 @@ async function goToNextRound() {
           pendingPicks: {},
           conflictGroups: [],
           confirmedPicks: {},
+          lotteryResults: [],
           announcementQueue: [],
           currentAnnouncementIndex: 0,
+          currentLotteryGroupIndex: 0,
           currentPlayerName: "",
           phase: "drafting",
           updatedAt: now,
@@ -1515,6 +2158,14 @@ conflictPickList.addEventListener("change", (event) => {
 confirmConflictButton.addEventListener("click", saveConflictSelection);
 
 nextAnnouncementButton.addEventListener("click", showNextAnnouncement);
+
+startLotteryButton.addEventListener("click", startLottery);
+
+nextLotteryButton.addEventListener("click", goToNextLottery);
+
+loserNextStepButton.addEventListener("click", () => {
+  lotterySummaryMessage.textContent = "外れ指名機能は次の段階で実装します。";
+});
 
 nextRoundButton.addEventListener("click", goToNextRound);
 

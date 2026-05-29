@@ -115,6 +115,32 @@
         <p id="conflictSelectionMessage" class="message" aria-live="polite"></p>
       </div>
 
+      <div id="lotteryScreen" class="lottery-screen is-hidden">
+        <p class="lottery-label">抽選</p>
+        <p id="lotteryProgressText" class="lottery-progress">1 / 1 グループ目</p>
+        <h2 id="lotteryGroupLabel">重複①の抽選</h2>
+        <p id="lotteryPlayerName" class="lottery-player-name">対象選手</p>
+
+        <section class="lottery-target-area" aria-labelledby="lotteryTargetTitle">
+          <h3 id="lotteryTargetTitle">抽選対象</h3>
+          <ul id="lotteryTargetList" class="lottery-target-list"></ul>
+        </section>
+
+        <div id="rouletteDisplay" class="roulette-display" aria-live="polite">抽選待ち</div>
+        <p id="lotteryResultText" class="lottery-result-text" aria-live="polite"></p>
+        <button id="startLotteryButton" type="button">抽選開始</button>
+        <button id="nextLotteryButton" class="is-hidden" type="button">次の抽選へ</button>
+        <p id="lotteryMessage" class="message" aria-live="polite"></p>
+      </div>
+
+      <div id="lotterySummaryScreen" class="lottery-summary-screen is-hidden">
+        <p class="lottery-label">抽選結果</p>
+        <h2>抽選結果一覧</h2>
+        <div id="lotterySummaryList" class="lottery-summary-list"></div>
+        <p id="lotterySummaryMessage" class="lottery-summary-message">抽選で外れたプレイヤーは、次の段階で外れ指名へ進みます。</p>
+        <button id="loserNextStepButton" type="button">外れ指名へ進む</button>
+      </div>
+
       <div id="announcementScreen" class="announcement-screen is-hidden">
         <p class="announcement-label">ドラフト発表</p>
         <p id="announcementProgressText" class="announcement-progress">1人目 / 1人</p>
