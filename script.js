@@ -1281,50 +1281,6 @@ function getHistoryIdentity(historyItem) {
   return `${historyItem.roundNumber}:${historyItem.teamName}:${historyItem.playerName}`;
 }
 
-async function openConflictSelection() {
-  if (currentRoomId === "" || currentRoomRef === null) {
-    message.textContent = "先にルームへ入室してください";
-    return;
-  }
-
-  announceReadyButton.disabled = true;
-  announcementPlaceholder.classList.add("is-hidden");
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const roomSnapshot = await transaction.get(currentRoomRef);
-
-      if (!roomSnapshot.exists()) {
-        throw new Error("ルーム情報が見つかりません");
-      }
-
-      const now = getNowISOString();
-      const roomData = roomSnapshot.data();
-      const participants = normalizeParticipants(roomData.participants);
-      const pendingPicks = normalizePendingPicks(roomData.pendingPicks);
-      const status = getSubmissionStatus(participants, pendingPicks);
-
-      if (!status.allSubmitted) {
-        throw new Error("まだ全員の指名が完了していません");
-      }
-
-      transaction.update(currentRoomRef, {
-        phase: "conflictSelection",
-        updatedAt: now,
-      });
-    });
-  } catch (error) {
-    console.error("重複選択画面への切り替えに失敗しました", error);
-    announcementPlaceholder.textContent =
-      error.message === "まだ全員の指名が完了していません"
-        ? "まだ全員の指名が完了していません"
-        : "重複選択画面を表示できませんでした。もう一度お試しください。";
-    announcementPlaceholder.classList.remove("is-hidden");
-  } finally {
-    announceReadyButton.disabled = false;
-  }
-}
-
 async function startAnnouncement(options = {}) {
   if (currentRoomId === "" || currentRoomRef === null) {
     message.textContent = "先にルームへ入室してください";
@@ -1357,16 +1313,8 @@ async function startAnnouncement(options = {}) {
 
       const roundKey = `${currentRoomId}-${now}`;
       const announcementQueue = buildAnnouncementQueue(participants, pendingPicks, roundKey);
-      const conflictSelectionData = buildConflictSelectionData(
-        participants,
-        pendingPicks,
-        conflictSelections,
-        now
-      );
 
       transaction.update(currentRoomRef, {
-        conflictGroups: conflictSelectionData.conflictGroups,
-        confirmedPicks: conflictSelectionData.confirmedPicks,
         announcementQueue: announcementQueue.map((announcementItem) => {
           return toFirestoreAnnouncementItem(announcementItem);
         }),
@@ -1384,6 +1332,52 @@ async function startAnnouncement(options = {}) {
     feedbackElement.classList.remove("is-hidden");
   } finally {
     triggerButton.disabled = false;
+  }
+}
+
+async function saveConflictSelection() {
+  if (currentRoomId === "" || currentRoomRef === null) {
+    conflictSelectionMessage.textContent = "先にルームへ入室してください";
+    return;
+  }
+
+  confirmConflictButton.disabled = true;
+  conflictSelectionMessage.textContent = "";
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+
+      if (!roomSnapshot.exists()) {
+        throw new Error("ルーム情報が見つかりません");
+      }
+
+      const now = getNowISOString();
+      const roomData = roomSnapshot.data();
+      const participants = normalizeParticipants(roomData.participants);
+      const pendingPicks = normalizePendingPicks(roomData.pendingPicks);
+      const conflictSelectionData = buildConflictSelectionData(
+        participants,
+        pendingPicks,
+        conflictSelections,
+        now
+      );
+
+      transaction.update(currentRoomRef, {
+        conflictGroups: conflictSelectionData.conflictGroups,
+        confirmedPicks: conflictSelectionData.confirmedPicks,
+        phase: "conflictSelection",
+        updatedAt: now,
+      });
+    });
+
+    conflictSelectionMessage.textContent = "重複情報を保存しました。次は抽選機能を実装します。";
+  } catch (error) {
+    console.error("重複情報の保存に失敗しました", error);
+    conflictSelectionMessage.textContent =
+      error.message || "重複情報を保存できませんでした。もう一度お試しください。";
+  } finally {
+    confirmConflictButton.disabled = false;
   }
 }
 
@@ -1412,7 +1406,7 @@ async function showNextAnnouncement() {
 
       if (announcementQueue.length === 0) {
         transaction.update(currentRoomRef, {
-          phase: "roundSummary",
+          phase: "conflictSelection",
           updatedAt: now,
         });
         return;
@@ -1426,39 +1420,12 @@ async function showNextAnnouncement() {
         return;
       }
 
-      const latestHistory = normalizeHistory(roomData.history);
-      const historyIdentities = new Set(latestHistory.map((historyItem) => getHistoryIdentity(historyItem)));
-      const announcedHistoryItems = announcementQueue
-        .map((announcementItem) => {
-          return {
-            roundNumber: announcementItem.round,
-            teamName: announcementItem.teamName,
-            playerName: announcementItem.playerName,
-            createdAt: now,
-            roundKey: announcementItem.roundKey,
-          };
-        })
-        .filter((historyItem) => {
-          const identity = getHistoryIdentity(historyItem);
-
-          if (historyIdentities.has(identity)) {
-            return false;
-          }
-
-          historyIdentities.add(identity);
-          return true;
-        });
-      const nextHistory = latestHistory.concat(announcedHistoryItems);
-
       transaction.update(currentRoomRef, {
-        history: nextHistory.map((historyItem) => {
-          return toFirestoreHistoryItem(historyItem);
-        }),
         currentAnnouncementIndex: announcementQueue.length - 1,
         currentRound: announcementQueue[0].round,
         currentTeamName: announcementQueue[announcementQueue.length - 1].teamName,
         currentPlayerName: announcementQueue[announcementQueue.length - 1].playerName,
-        phase: "roundSummary",
+        phase: "conflictSelection",
         updatedAt: now,
       });
     });
@@ -1512,7 +1479,7 @@ announceButton.addEventListener("click", announcePlayer);
 
 resetButton.addEventListener("click", resetDraftHistory);
 
-announceReadyButton.addEventListener("click", openConflictSelection);
+announceReadyButton.addEventListener("click", startAnnouncement);
 
 conflictPickList.addEventListener("change", (event) => {
   const target = event.target;
@@ -1545,12 +1512,7 @@ conflictPickList.addEventListener("change", (event) => {
   renderConflictSelectionScreen();
 });
 
-confirmConflictButton.addEventListener("click", () => {
-  startAnnouncement({
-    triggerButton: confirmConflictButton,
-    feedbackElement: conflictSelectionMessage,
-  });
-});
+confirmConflictButton.addEventListener("click", saveConflictSelection);
 
 nextAnnouncementButton.addEventListener("click", showNextAnnouncement);
 
