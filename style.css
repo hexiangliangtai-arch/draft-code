@@ -207,12 +207,14 @@ button:disabled:hover {
 /* 「第1巡選択希望選手」「チーム名」「ここに名前が表示されます」の発表エリア */
 .draft-input-screen,
 .draft-waiting-screen,
+.conflict-selection-screen,
 .announcement-screen,
 .round-summary-screen {
   margin: 0 auto 16px;
 }
 
 .draft-waiting-screen,
+.conflict-selection-screen,
 .announcement-screen,
 .round-summary-screen {
   padding: 18px 16px;
@@ -222,6 +224,7 @@ button:disabled:hover {
   text-align: center;
 }
 
+.conflict-selection-screen,
 .announcement-screen,
 .round-summary-screen {
   max-width: 760px;
@@ -286,11 +289,110 @@ button:disabled:hover {
   width: min(260px, 100%);
 }
 
+.conflict-label,
 .announcement-label,
 .summary-label {
   margin: 0 0 10px;
   color: #c62828;
   font-size: clamp(24px, 5vw, 42px);
+  font-weight: bold;
+}
+
+.conflict-selection-screen h2 {
+  margin: 0 0 8px;
+  color: #174ea6;
+  font-size: clamp(22px, 4vw, 34px);
+}
+
+.conflict-description {
+  margin: 0 0 18px;
+  color: #1f2933;
+  font-weight: bold;
+}
+
+.conflict-pick-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.conflict-pick-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-left: 6px solid #174ea6;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.conflict-pick-name {
+  display: grid;
+  gap: 4px;
+  font-weight: bold;
+}
+
+.conflict-pick-name strong {
+  color: #174ea6;
+}
+
+.conflict-pick-name span {
+  overflow-wrap: anywhere;
+}
+
+.conflict-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.conflict-controls select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 2px solid #b8c7d9;
+  border-radius: 6px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.conflict-summary-area {
+  margin: 0 0 18px;
+  text-align: left;
+}
+
+.conflict-summary-area h3 {
+  margin: 0 0 10px;
+  color: #174ea6;
+  font-size: 20px;
+}
+
+.conflict-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.conflict-summary-group {
+  padding: 12px 14px;
+  border-left: 6px solid #c62828;
+  border-radius: 6px;
+  background: #fff8f8;
+}
+
+.conflict-summary-group h4 {
+  margin: 0 0 8px;
+  color: #c62828;
+  font-size: 18px;
+}
+
+.conflict-summary-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   font-weight: bold;
 }
 
@@ -630,6 +732,11 @@ button:disabled:hover {
   .draft-history,
   .player-history {
     max-height: 320px;
+  }
+
+  .conflict-pick-row,
+  .conflict-controls {
+    grid-template-columns: 1fr;
   }
 }
 

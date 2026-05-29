@@ -99,6 +99,22 @@
         </div>
       </div>
 
+      <div id="conflictSelectionScreen" class="conflict-selection-screen is-hidden">
+        <p class="conflict-label">重複指名の確認</p>
+        <h2 id="conflictRoundText">第1巡目 指名一覧</h2>
+        <p class="conflict-description">同じ選手を指名したプレイヤーを同じ重複グループにしてください。</p>
+
+        <div id="conflictPickList" class="conflict-pick-list"></div>
+
+        <section class="conflict-summary-area" aria-labelledby="conflictSummaryTitle">
+          <h3 id="conflictSummaryTitle">選択内容の確認</h3>
+          <div id="conflictSummary" class="conflict-summary"></div>
+        </section>
+
+        <button id="confirmConflictButton" type="button">確認して次へ</button>
+        <p id="conflictSelectionMessage" class="message" aria-live="polite"></p>
+      </div>
+
       <div id="announcementScreen" class="announcement-screen is-hidden">
         <p class="announcement-label">ドラフト発表</p>
         <p id="announcementProgressText" class="announcement-progress">1人目 / 1人</p>

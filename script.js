@@ -39,6 +39,12 @@ const remainingCountText = document.querySelector("#remainingCountText");
 const remainingParticipantsList = document.querySelector("#remainingParticipantsList");
 const announceReadyButton = document.querySelector("#announceReadyButton");
 const announcementPlaceholder = document.querySelector("#announcementPlaceholder");
+const conflictSelectionScreen = document.querySelector("#conflictSelectionScreen");
+const conflictRoundText = document.querySelector("#conflictRoundText");
+const conflictPickList = document.querySelector("#conflictPickList");
+const conflictSummary = document.querySelector("#conflictSummary");
+const confirmConflictButton = document.querySelector("#confirmConflictButton");
+const conflictSelectionMessage = document.querySelector("#conflictSelectionMessage");
 const announcementScreen = document.querySelector("#announcementScreen");
 const announcementCard = document.querySelector("#announcementCard");
 const announcementProgressText = document.querySelector("#announcementProgressText");
@@ -79,6 +85,7 @@ let announcementQueueData = [];
 let currentAnnouncementIndex = 0;
 let currentPhase = "drafting";
 let lastRevealedAnnouncementSignature = "";
+let conflictSelections = {};
 
 function isFirebaseConfigReady() {
   return (
@@ -292,6 +299,7 @@ function hasCurrentPlayerSubmitted() {
 function hideRoomPhaseScreens() {
   draftInputScreen.classList.add("is-hidden");
   draftWaitingScreen.classList.add("is-hidden");
+  conflictSelectionScreen.classList.add("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
 }
@@ -299,6 +307,7 @@ function hideRoomPhaseScreens() {
 function showNormalScreen() {
   draftHeader.classList.remove("is-hidden");
   normalScreen.classList.remove("is-hidden");
+  conflictSelectionScreen.classList.add("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
 }
@@ -319,6 +328,7 @@ function showAnnouncementScreen() {
   hideRoomPhaseScreens();
   draftHeader.classList.add("is-hidden");
   normalScreen.classList.add("is-hidden");
+  conflictSelectionScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.add("is-hidden");
   announcementScreen.classList.remove("is-hidden");
 }
@@ -327,8 +337,18 @@ function showRoundSummaryScreen() {
   hideRoomPhaseScreens();
   draftHeader.classList.add("is-hidden");
   normalScreen.classList.add("is-hidden");
+  conflictSelectionScreen.classList.add("is-hidden");
   announcementScreen.classList.add("is-hidden");
   roundSummaryScreen.classList.remove("is-hidden");
+}
+
+function showConflictSelectionScreen() {
+  hideRoomPhaseScreens();
+  draftHeader.classList.add("is-hidden");
+  normalScreen.classList.add("is-hidden");
+  announcementScreen.classList.add("is-hidden");
+  roundSummaryScreen.classList.add("is-hidden");
+  conflictSelectionScreen.classList.remove("is-hidden");
 }
 
 function normalizeHistoryItem(historyItem) {
@@ -409,6 +429,8 @@ function createInitialRoomData(roomId, participantTeamName = "") {
     history: [],
     participants: participantTeamName !== "" ? addOrUpdateParticipant([], participantTeamName, now) : [],
     pendingPicks: {},
+    conflictGroups: [],
+    confirmedPicks: {},
     announcementQueue: [],
     currentAnnouncementIndex: 0,
     phase: "drafting",
@@ -642,6 +664,262 @@ function renderRoundSummaryScreen() {
   });
 }
 
+function getOrderedPendingPicks(participants = participantsData, pendingPicks = pendingPicksData) {
+  return participants
+    .map((participant) => pendingPicks[participant.teamName])
+    .filter((pendingPick) => pendingPick !== undefined);
+}
+
+function getConflictGroupLabel(groupNumber) {
+  const groupLabels = {
+    1: "重複①",
+    2: "重複②",
+    3: "重複③",
+    4: "重複④",
+    5: "重複⑤",
+  };
+
+  return groupLabels[groupNumber] || `重複${groupNumber}`;
+}
+
+function ensureConflictSelections(orderedPicks) {
+  const nextSelections = {};
+
+  orderedPicks.forEach((pendingPick) => {
+    const currentSelection = conflictSelections[pendingPick.teamName];
+
+    nextSelections[pendingPick.teamName] = {
+      type: currentSelection?.type === "conflict" ? "conflict" : "single",
+      group: currentSelection?.group || "1",
+    };
+  });
+
+  conflictSelections = nextSelections;
+}
+
+function createConflictGroupSelect(teamName, selectedGroup, isDisabled) {
+  const groupSelect = document.createElement("select");
+
+  groupSelect.dataset.role = "group";
+  groupSelect.dataset.teamName = teamName;
+  groupSelect.disabled = isDisabled;
+
+  for (let groupNumber = 1; groupNumber <= 5; groupNumber += 1) {
+    const option = document.createElement("option");
+    const value = String(groupNumber);
+
+    option.value = value;
+    option.textContent = getConflictGroupLabel(value);
+    option.selected = selectedGroup === value;
+    groupSelect.appendChild(option);
+  }
+
+  return groupSelect;
+}
+
+function renderConflictSelectionSummary(orderedPicks) {
+  const singlePicks = [];
+  const groupedPicks = {
+    1: [],
+    2: [],
+    3: [],
+    4: [],
+    5: [],
+  };
+
+  conflictSummary.innerHTML = "";
+
+  orderedPicks.forEach((pendingPick) => {
+    const selection = conflictSelections[pendingPick.teamName];
+
+    if (selection?.type === "conflict") {
+      groupedPicks[selection.group || "1"].push(pendingPick);
+      return;
+    }
+
+    singlePicks.push(pendingPick);
+  });
+
+  const summaryGroups = [
+    {
+      title: "単独指名",
+      picks: singlePicks,
+    },
+  ];
+
+  Object.keys(groupedPicks).forEach((groupNumber) => {
+    if (groupedPicks[groupNumber].length > 0) {
+      summaryGroups.push({
+        title: getConflictGroupLabel(groupNumber),
+        picks: groupedPicks[groupNumber],
+      });
+    }
+  });
+
+  summaryGroups.forEach((summaryGroup) => {
+    const group = document.createElement("section");
+    const title = document.createElement("h4");
+    const list = document.createElement("ul");
+
+    group.className = "conflict-summary-group";
+    title.textContent = summaryGroup.title;
+    list.className = "conflict-summary-list";
+
+    if (summaryGroup.picks.length === 0) {
+      const emptyItem = document.createElement("li");
+
+      emptyItem.textContent = "該当する指名はありません";
+      list.appendChild(emptyItem);
+    } else {
+      summaryGroup.picks.forEach((pendingPick) => {
+        const listItem = document.createElement("li");
+
+        listItem.textContent = `${pendingPick.teamName}　${pendingPick.playerName}`;
+        list.appendChild(listItem);
+      });
+    }
+
+    group.appendChild(title);
+    group.appendChild(list);
+    conflictSummary.appendChild(group);
+  });
+}
+
+function renderConflictSelectionScreen() {
+  const orderedPicks = getOrderedPendingPicks();
+
+  showConflictSelectionScreen();
+  conflictPickList.innerHTML = "";
+  conflictSelectionMessage.textContent = "";
+  ensureConflictSelections(orderedPicks);
+
+  if (orderedPicks.length === 0) {
+    conflictRoundText.textContent = "指名一覧はありません";
+    conflictPickList.textContent = "全員の指名がまだ揃っていません。";
+    renderConflictSelectionSummary([]);
+    return;
+  }
+
+  conflictRoundText.textContent = `第${orderedPicks[0].round}巡目 指名一覧`;
+
+  orderedPicks.forEach((pendingPick) => {
+    const selection = conflictSelections[pendingPick.teamName];
+    const row = document.createElement("article");
+    const pickText = document.createElement("div");
+    const teamText = document.createElement("strong");
+    const playerText = document.createElement("span");
+    const controls = document.createElement("div");
+    const typeSelect = document.createElement("select");
+
+    row.className = "conflict-pick-row";
+    pickText.className = "conflict-pick-name";
+    controls.className = "conflict-controls";
+
+    teamText.textContent = pendingPick.teamName;
+    playerText.textContent = pendingPick.playerName;
+
+    typeSelect.dataset.role = "type";
+    typeSelect.dataset.teamName = pendingPick.teamName;
+    typeSelect.innerHTML = `
+      <option value="single">単独指名</option>
+      <option value="conflict">重複指名</option>
+    `;
+    typeSelect.value = selection.type;
+
+    pickText.appendChild(teamText);
+    pickText.appendChild(playerText);
+    controls.appendChild(typeSelect);
+    controls.appendChild(createConflictGroupSelect(
+      pendingPick.teamName,
+      selection.group,
+      selection.type !== "conflict"
+    ));
+    row.appendChild(pickText);
+    row.appendChild(controls);
+    conflictPickList.appendChild(row);
+  });
+
+  renderConflictSelectionSummary(orderedPicks);
+}
+
+function buildConflictSelectionData(participants, pendingPicks, selections, now) {
+  const orderedPicks = getOrderedPendingPicks(participants, pendingPicks);
+  const conflictPickGroups = {
+    1: [],
+    2: [],
+    3: [],
+    4: [],
+    5: [],
+  };
+  const confirmedPicks = {};
+
+  if (orderedPicks.length !== participants.length) {
+    throw new Error("参加者全員の指名が揃っていません");
+  }
+
+  orderedPicks.forEach((pendingPick) => {
+    const selection = selections[pendingPick.teamName];
+
+    if (!selection || (selection.type !== "single" && selection.type !== "conflict")) {
+      throw new Error("全員について単独指名か重複指名を選んでください");
+    }
+
+    if (selection.type === "conflict") {
+      if (!selection.group) {
+        throw new Error("重複指名を選んだプレイヤーには、重複グループを設定してください");
+      }
+
+      if (conflictPickGroups[selection.group] === undefined) {
+        throw new Error("重複指名を選んだプレイヤーには、重複グループを設定してください");
+      }
+
+      conflictPickGroups[selection.group].push(pendingPick);
+      return;
+    }
+
+    confirmedPicks[pendingPick.teamName] = {
+      teamName: pendingPick.teamName,
+      playerName: pendingPick.playerName,
+      round: pendingPick.round,
+      attempt: 0,
+      decidedBy: "single",
+      confirmedAt: now,
+    };
+  });
+
+  const conflictGroups = Object.keys(conflictPickGroups)
+    .filter((groupNumber) => conflictPickGroups[groupNumber].length > 0)
+    .map((groupNumber) => {
+      const picks = conflictPickGroups[groupNumber];
+
+      if (picks.length < 2) {
+        throw new Error(`${getConflictGroupLabel(groupNumber)}には2人以上のプレイヤーを設定してください`);
+      }
+
+      return {
+        id: `conflict-${groupNumber}`,
+        label: getConflictGroupLabel(groupNumber),
+        teams: picks.map((pendingPick) => pendingPick.teamName),
+        picks: picks.map((pendingPick) => {
+          return {
+            teamName: pendingPick.teamName,
+            playerName: pendingPick.playerName,
+            round: pendingPick.round,
+            attempt: 0,
+          };
+        }),
+        status: "pendingLottery",
+        winner: null,
+        losers: [],
+      };
+    });
+
+  return {
+    conflictGroups: conflictGroups,
+    confirmedPicks: confirmedPicks,
+  };
+}
+
 function renderPlayerHistory() {
   const teamNames = [];
 
@@ -740,7 +1018,10 @@ function applyRoomData(roomData) {
   renderDraftHistory();
   renderParticipants();
 
-  if (phase === "announcing") {
+  if (phase === "conflictSelection") {
+    lastRevealedAnnouncementSignature = "";
+    renderConflictSelectionScreen();
+  } else if (phase === "announcing") {
     renderAnnouncementScreen();
   } else if (phase === "roundSummary") {
     lastRevealedAnnouncementSignature = "";
@@ -823,7 +1104,7 @@ async function joinRoom() {
         const roomPhase = typeof roomData.phase === "string" ? roomData.phase : "drafting";
         const nextStatus = getSubmissionStatus(nextParticipants, nextPendingPicks);
         const nextPhase =
-          roomPhase === "announcing" || roomPhase === "roundSummary"
+          roomPhase === "conflictSelection" || roomPhase === "announcing" || roomPhase === "roundSummary"
             ? roomPhase
             : nextStatus.allSubmitted
               ? "readyToAnnounce"
@@ -889,6 +1170,8 @@ async function resetDraftHistory() {
         transaction.update(currentRoomRef, {
           history: [],
           pendingPicks: {},
+          conflictGroups: [],
+          confirmedPicks: {},
           announcementQueue: [],
           currentAnnouncementIndex: 0,
           currentRound: 1,
@@ -998,7 +1281,7 @@ function getHistoryIdentity(historyItem) {
   return `${historyItem.roundNumber}:${historyItem.teamName}:${historyItem.playerName}`;
 }
 
-async function startAnnouncement() {
+async function openConflictSelection() {
   if (currentRoomId === "" || currentRoomRef === null) {
     message.textContent = "先にルームへ入室してください";
     return;
@@ -1025,10 +1308,65 @@ async function startAnnouncement() {
         throw new Error("まだ全員の指名が完了していません");
       }
 
+      transaction.update(currentRoomRef, {
+        phase: "conflictSelection",
+        updatedAt: now,
+      });
+    });
+  } catch (error) {
+    console.error("重複選択画面への切り替えに失敗しました", error);
+    announcementPlaceholder.textContent =
+      error.message === "まだ全員の指名が完了していません"
+        ? "まだ全員の指名が完了していません"
+        : "重複選択画面を表示できませんでした。もう一度お試しください。";
+    announcementPlaceholder.classList.remove("is-hidden");
+  } finally {
+    announceReadyButton.disabled = false;
+  }
+}
+
+async function startAnnouncement(options = {}) {
+  if (currentRoomId === "" || currentRoomRef === null) {
+    message.textContent = "先にルームへ入室してください";
+    return;
+  }
+
+  const triggerButton = options.triggerButton || announceReadyButton;
+  const feedbackElement = options.feedbackElement || announcementPlaceholder;
+
+  triggerButton.disabled = true;
+  feedbackElement.classList.add("is-hidden");
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomSnapshot = await transaction.get(currentRoomRef);
+
+      if (!roomSnapshot.exists()) {
+        throw new Error("ルーム情報が見つかりません");
+      }
+
+      const now = getNowISOString();
+      const roomData = roomSnapshot.data();
+      const participants = normalizeParticipants(roomData.participants);
+      const pendingPicks = normalizePendingPicks(roomData.pendingPicks);
+      const status = getSubmissionStatus(participants, pendingPicks);
+
+      if (!status.allSubmitted) {
+        throw new Error("まだ全員の指名が完了していません");
+      }
+
       const roundKey = `${currentRoomId}-${now}`;
       const announcementQueue = buildAnnouncementQueue(participants, pendingPicks, roundKey);
+      const conflictSelectionData = buildConflictSelectionData(
+        participants,
+        pendingPicks,
+        conflictSelections,
+        now
+      );
 
       transaction.update(currentRoomRef, {
+        conflictGroups: conflictSelectionData.conflictGroups,
+        confirmedPicks: conflictSelectionData.confirmedPicks,
         announcementQueue: announcementQueue.map((announcementItem) => {
           return toFirestoreAnnouncementItem(announcementItem);
         }),
@@ -1039,13 +1377,13 @@ async function startAnnouncement() {
     });
   } catch (error) {
     console.error("発表開始に失敗しました", error);
-    announcementPlaceholder.textContent =
-      error.message === "まだ全員の指名が完了していません"
-        ? "まだ全員の指名が完了していません"
+    feedbackElement.textContent =
+      error.message
+        ? error.message
         : "発表を開始できませんでした。もう一度お試しください。";
-    announcementPlaceholder.classList.remove("is-hidden");
+    feedbackElement.classList.remove("is-hidden");
   } finally {
-    announceReadyButton.disabled = false;
+    triggerButton.disabled = false;
   }
 }
 
@@ -1148,6 +1486,8 @@ async function goToNextRound() {
       if (roomSnapshot.exists()) {
         transaction.update(currentRoomRef, {
           pendingPicks: {},
+          conflictGroups: [],
+          confirmedPicks: {},
           announcementQueue: [],
           currentAnnouncementIndex: 0,
           currentPlayerName: "",
@@ -1172,7 +1512,45 @@ announceButton.addEventListener("click", announcePlayer);
 
 resetButton.addEventListener("click", resetDraftHistory);
 
-announceReadyButton.addEventListener("click", startAnnouncement);
+announceReadyButton.addEventListener("click", openConflictSelection);
+
+conflictPickList.addEventListener("change", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const teamName = target.dataset.teamName;
+  const role = target.dataset.role;
+
+  if (!teamName || !role) {
+    return;
+  }
+
+  const currentSelection = conflictSelections[teamName] || {
+    type: "single",
+    group: "1",
+  };
+
+  if (role === "type") {
+    currentSelection.type = target.value === "conflict" ? "conflict" : "single";
+  }
+
+  if (role === "group") {
+    currentSelection.group = target.value;
+  }
+
+  conflictSelections[teamName] = currentSelection;
+  renderConflictSelectionScreen();
+});
+
+confirmConflictButton.addEventListener("click", () => {
+  startAnnouncement({
+    triggerButton: confirmConflictButton,
+    feedbackElement: conflictSelectionMessage,
+  });
+});
 
 nextAnnouncementButton.addEventListener("click", showNextAnnouncement);
 
